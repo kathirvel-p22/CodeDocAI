@@ -151,20 +151,338 @@ npm start
 
 ## 🐳 Docker Deployment
 
-### Build Docker Image
+### Prerequisites for Docker
+- Docker Desktop installed and running ([Download here](https://www.docker.com/products/docker-desktop))
+- Docker Compose installed (included with Docker Desktop)
+
+### Quick Start with Docker (Recommended)
+
+**Step 1: Build Frontend Locally**
 ```bash
-docker build -t codedocai .
+# In VS Code Terminal (Ctrl + ` or View → Terminal)
+npm install
+npm run build
 ```
 
-### Run Docker Container
+**Step 2: Start Docker Containers**
 ```bash
-docker run -p 3000:3000 -e GEMINI_API_KEY=your_key codedocai
-```
-
-### Using Docker Compose
-```bash
+# Start MongoDB + Application
 docker-compose up -d
 ```
+
+**Step 3: Access Application**
+```
+http://localhost:3000
+```
+
+### Detailed Docker Commands (VS Code Terminal)
+
+#### 1️⃣ Initial Setup
+Open VS Code Terminal (`Ctrl + \`` or `View → Terminal`) and run:
+
+```bash
+# Navigate to project directory
+cd C:\Users\lapto\Downloads\codeinsight-ai
+
+# Install dependencies
+npm install
+
+# Create .env file with your API key
+echo GEMINI_API_KEY=your_gemini_api_key_here > .env
+
+# Build frontend (REQUIRED before Docker)
+npm run build
+```
+
+#### 2️⃣ Start Docker Deployment
+```bash
+# Start all services (MongoDB + Application)
+docker-compose up -d
+
+# Alternative: View live logs while starting
+docker-compose up
+```
+
+**Expected Output:**
+```
+[+] Running 3/3
+ ✔ Network codeinsight-ai_codedocai-network  Created
+ ✔ Container codedocai-mongodb               Started
+ ✔ Container codedocai-app                   Started
+```
+
+#### 3️⃣ Check Container Status
+```bash
+# View running containers
+docker ps
+
+# Expected output shows:
+# - codedocai-mongodb (healthy)
+# - codedocai-app (healthy)
+```
+
+#### 4️⃣ View Application Logs
+```bash
+# View all logs
+docker-compose logs -f
+
+# View only application logs
+docker-compose logs -f codedocai
+
+# View only MongoDB logs
+docker-compose logs -f mongodb
+```
+
+#### 5️⃣ Stop Docker Deployment
+```bash
+# Stop containers (data preserved)
+docker-compose down
+
+# Stop and remove all data
+docker-compose down -v
+```
+
+#### 6️⃣ Restart After Code Changes
+```bash
+# Stop containers
+docker-compose down
+
+# Rebuild frontend
+npm run build
+
+# Rebuild and restart Docker
+docker-compose up -d --build
+```
+
+### Docker Management Commands
+
+#### Check Docker is Running
+```bash
+# Check Docker version
+docker --version
+
+# Check Docker Compose version
+docker-compose --version
+```
+
+#### Container Management
+```bash
+# List all running containers
+docker ps
+
+# List all containers (including stopped)
+docker ps -a
+
+# Restart specific container
+docker restart codedocai-app
+
+# Stop specific container
+docker stop codedocai-app
+
+# Start specific container
+docker start codedocai-app
+```
+
+#### Logs & Debugging
+```bash
+# View recent logs (last 100 lines)
+docker-compose logs --tail=100
+
+# Follow logs in real-time
+docker-compose logs -f
+
+# View logs for specific service
+docker-compose logs codedocai
+
+# Access container shell (for debugging)
+docker exec -it codedocai-app sh
+```
+
+#### Clean Up Docker
+```bash
+# Remove stopped containers
+docker container prune
+
+# Remove unused images
+docker image prune
+
+# Remove all unused resources
+docker system prune -a
+
+# Remove specific container
+docker rm codedocai-app
+
+# Remove specific image
+docker rmi codeinsight-ai-codedocai
+```
+
+### Docker Compose Configuration
+
+The `docker-compose.yml` file defines:
+
+**Services:**
+1. **mongodb** - MongoDB 7.0 database
+   - Port: 27017
+   - Data persistence via Docker volumes
+   - Health checks enabled
+
+2. **codedocai** - Application (Frontend + Backend)
+   - Port: 3000 (mapped to host)
+   - Environment: Production
+   - Depends on MongoDB health
+
+**Volumes:**
+- `mongodb_data` - Persistent MongoDB data storage
+- `mongodb_config` - MongoDB configuration
+
+**Networks:**
+- `codedocai-network` - Bridge network for container communication
+
+### Troubleshooting Docker Issues
+
+#### Port 3000 Already in Use
+```bash
+# Windows: Find process using port 3000
+netstat -ano | findstr :3000
+
+# Kill the process (replace <PID> with actual number)
+taskkill /PID <PID> /F
+
+# Or change port in docker-compose.yml:
+# ports:
+#   - "8080:3000"  # Use port 8080 instead
+```
+
+#### Container Fails to Start
+```bash
+# Check logs for errors
+docker-compose logs codedocai
+
+# Rebuild from scratch
+docker-compose down -v
+docker-compose up --build
+```
+
+#### MongoDB Connection Failed
+```bash
+# Check MongoDB is running
+docker ps | findstr mongodb
+
+# Restart MongoDB
+docker restart codedocai-mongodb
+
+# Check MongoDB logs
+docker logs codedocai-mongodb
+```
+
+#### Build Errors
+```bash
+# Ensure frontend is built first
+npm run build
+
+# Clean Docker cache
+docker system prune -a
+
+# Rebuild
+docker-compose build --no-cache
+docker-compose up -d
+```
+
+### Docker vs Local Development
+
+| Feature | Local Dev | Docker |
+|---------|-----------|--------|
+| Command | `npm run dev` | `docker-compose up` |
+| Port | 3000 | 3000 |
+| Database | Optional | MongoDB included |
+| Setup | Node.js required | Only Docker required |
+| Hot Reload | ✅ Yes | ❌ No (rebuild needed) |
+| Production-like | ❌ No | ✅ Yes |
+
+### Advanced Docker Commands
+
+#### Build Specific Services
+```bash
+# Build only application
+docker-compose build codedocai
+
+# Build without cache
+docker-compose build --no-cache
+```
+
+#### Scale Services (for load testing)
+```bash
+# Run multiple app instances
+docker-compose up --scale codedocai=3
+```
+
+#### Export/Import Docker Images
+```bash
+# Save image to file
+docker save codeinsight-ai-codedocai -o codedocai.tar
+
+# Load image from file
+docker load -i codedocai.tar
+```
+
+#### View Resource Usage
+```bash
+# Check container resource usage
+docker stats
+
+# Check disk usage
+docker system df
+```
+
+### Production Deployment
+
+#### Deploy to AWS ECS
+```bash
+# Tag image
+docker tag codeinsight-ai-codedocai:latest <account-id>.dkr.ecr.us-east-1.amazonaws.com/codedocai:latest
+
+# Login to ECR
+aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin <account-id>.dkr.ecr.us-east-1.amazonaws.com
+
+# Push to ECR
+docker push <account-id>.dkr.ecr.us-east-1.amazonaws.com/codedocai:latest
+```
+
+#### Deploy to Azure
+```bash
+# Login to Azure
+az acr login --name <registry-name>
+
+# Tag and push
+docker tag codeinsight-ai-codedocai:latest <registry-name>.azurecr.io/codedocai:latest
+docker push <registry-name>.azurecr.io/codedocai:latest
+```
+
+#### Deploy to DigitalOcean
+```bash
+# Install doctl CLI
+# https://docs.digitalocean.com/reference/doctl/
+
+# Authenticate
+doctl auth init
+
+# Push to registry
+doctl registry login
+docker tag codeinsight-ai-codedocai:latest registry.digitalocean.com/<registry>/codedocai:latest
+docker push registry.digitalocean.com/<registry>/codedocai:latest
+```
+
+### Docker Deployment Checklist
+
+- [ ] Docker Desktop installed and running
+- [ ] `.env` file created with `GEMINI_API_KEY`
+- [ ] Frontend built with `npm run build`
+- [ ] Containers started with `docker-compose up -d`
+- [ ] Both containers showing "healthy" status
+- [ ] Application accessible at http://localhost:3000
+- [ ] Can upload and analyze code successfully
+- [ ] Logs show no errors
+- [ ] Database persisting data after restart
 
 ## 📖 Usage Guide
 
@@ -505,3 +823,81 @@ For issues, questions, or suggestions:
 **Built with ❤️ using React, TypeScript, and Google Gemini AI**
 
 *Making code review intelligent, educational, and actionable.*
+
+---
+
+## 🎯 Quick Command Reference
+
+### Docker Commands (VS Code Terminal)
+```bash
+# Start everything
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# Stop everything
+docker-compose down
+
+# Check status
+docker ps
+
+# Restart after changes
+npm run build && docker-compose up -d --build
+```
+
+### Local Development
+```bash
+# Install dependencies
+npm install
+
+# Run development server
+npm run dev
+
+# Build for production
+npm run build
+
+# Start production server
+npm start
+```
+
+### Common Tasks
+```bash
+# Update environment variables
+echo GEMINI_API_KEY=new_key > .env
+
+# View container logs
+docker-compose logs codedocai
+
+# Access MongoDB
+docker exec -it codedocai-mongodb mongosh
+
+# Clean Docker resources
+docker system prune -a
+```
+
+---
+
+## 📋 Project Submission Details
+
+**Student:** Kathirvel P  
+**GitHub Repository:** https://github.com/kathirvel-p22/CodeDocAI.git  
+**Live Demo:** http://localhost:3000 (Docker deployment)  
+**Documentation:** Complete (17+ markdown files)  
+**Date:** July 2026
+
+### All Requirements Satisfied ✅
+
+✅ Individual unique project  
+✅ TypeScript/JavaScript programming  
+✅ Advanced prompt engineering  
+✅ Google Gemini AI integration  
+✅ MongoDB database (Docker)  
+✅ React 19 + Express.js frameworks  
+✅ TypeScript + HTML + CSS frontend  
+✅ Docker deployment configured  
+✅ Comprehensive documentation  
+✅ GitHub repository published  
+✅ Live demo deployable
+
+---

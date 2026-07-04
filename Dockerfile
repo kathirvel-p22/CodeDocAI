@@ -1,35 +1,19 @@
-# Multi-stage Docker build for CodeDocAI
-# Stage 1: Build frontend
-# Stage 2: Production runtime with backend
+# Simplified Docker build for CodeDocAI
+# Build frontend locally FIRST with: npm run build
+# Then run: docker-compose up --build
 
-# ===== Stage 1: Build Frontend =====
-FROM node:18-alpine AS frontend-builder
+FROM node:18
 
 WORKDIR /app
 
 # Copy package files
 COPY package*.json ./
 
-# Install ALL dependencies (including devDependencies for build)
-RUN npm ci
-
-# Copy source code
-COPY . .
-
-# Build frontend with Vite
-RUN npm run build
-
-# ===== Stage 2: Production Runtime =====
-FROM node:18-alpine AS production
-
-WORKDIR /app
-
-# Install production dependencies
-COPY package*.json ./
+# Install production dependencies only
 RUN npm ci --only=production
 
-# Copy built frontend from builder stage
-COPY --from=frontend-builder /app/dist ./dist
+# Copy PRE-BUILT frontend from local dist/
+COPY dist ./dist
 
 # Copy backend server files
 COPY server.ts ./
@@ -39,15 +23,8 @@ COPY index.html ./
 # Copy source files needed for backend
 COPY src ./src
 
-# Install tsx for running TypeScript directly
+# Install tsx for running TypeScript
 RUN npm install -g tsx
-
-# Create non-root user for security
-RUN addgroup -g 1001 -S nodejs && \
-    adduser -S nodejs -u 1001 && \
-    chown -R nodejs:nodejs /app
-
-USER nodejs
 
 # Expose port
 EXPOSE 3000
