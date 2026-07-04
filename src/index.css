@@ -1,0 +1,174 @@
+@import "tailwindcss";
+
+/* Light mode specific styling overrides */
+.light-mode {
+  --bg-main: #f8fafc;
+  --bg-card: #ffffff;
+  --bg-sidebar: #ffffff;
+  --bg-sub: #f1f5f9;
+  --border-main: #e2e8f0;
+  --text-main: #0f172a;
+  --text-muted: #334155;
+  --text-sub: #64748b;
+}
+
+/* Background overrides */
+.light-mode,
+.light-mode body {
+  background-color: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+.light-mode .bg-\[\#07080b\] {
+  background-color: #f8fafc !important;
+}
+
+.light-mode .bg-\[\#07080a\] {
+  background-color: #f8fafc !important;
+}
+
+.light-mode .bg-\[\#090a0d\] {
+  background-color: #ffffff !important;
+  border-color: #e2e8f0 !important;
+}
+
+.light-mode .bg-\[\#0b0c11\] {
+  background-color: #ffffff !important;
+  border-color: #e2e8f0 !important;
+  box-shadow: 0 4px 6px -1px rgba(15, 23, 42, 0.04), 0 2px 4px -2px rgba(15, 23, 42, 0.04) !important;
+}
+
+.light-mode .bg-\[\#0c0d12\],
+.light-mode .bg-\[\#030406\] {
+  background-color: #f1f5f9 !important;
+  border-color: #e2e8f0 !important;
+}
+
+.light-mode .bg-\[\#090b0e\] {
+  background-color: #f1f5f9 !important;
+  border-color: #cbd5e1 !important;
+}
+
+.light-mode .bg-black\/30 {
+  background-color: rgba(15, 23, 42, 0.05) !important;
+}
+
+.light-mode .bg-black\/60 {
+  background-color: rgba(15, 23, 42, 0.3) !important;
+}
+
+.light-mode .bg-black\/80 {
+  background-color: #0f172a !important;
+  color: #f8fafc !important;
+}
+
+.light-mode .bg-gray-900 {
+  background-color: #f1f5f9 !important;
+  border-color: #e2e8f0 !important;
+}
+
+.light-mode .bg-gray-950 {
+  background-color: #f8fafc !important;
+  border-color: #e2e8f0 !important;
+}
+
+.light-mode .bg-emerald-950\/20 {
+  background-color: rgba(16, 185, 129, 0.08) !important;
+  border-color: rgba(16, 185, 129, 0.2) !important;
+}
+
+.light-mode .bg-\[\#051610\] {
+  background-color: rgba(16, 185, 129, 0.05) !important;
+  border-color: rgba(16, 185, 129, 0.2) !important;
+}
+
+/* Text color overrides */
+.light-mode .text-\[\#f1f2f6\],
+.light-mode .text-white {
+  color: #0f172a !important;
+}
+
+.light-mode .text-gray-100,
+.light-mode .text-gray-200,
+.light-mode .text-gray-300 {
+  color: #1e293b !important;
+}
+
+.light-mode .text-gray-400 {
+  color: #475569 !important;
+}
+
+.light-mode .text-gray-500 {
+  color: #64748b !important;
+}
+
+/* Ensure primary actions and accent icons still have proper high contrast emerald/teal coloring */
+.light-mode .text-emerald-400 {
+  color: #059669 !important; /* Slightly darker green in light mode for AA contrast */
+}
+
+.light-mode .border-emerald-500\/20 {
+  border-color: rgba(16, 185, 129, 0.25) !important;
+}
+
+.light-mode .bg-emerald-500\/10 {
+  background-color: rgba(16, 185, 129, 0.08) !important;
+  color: #059669 !important;
+}
+
+.light-mode .bg-gradient-to-tr.from-emerald-500.to-teal-400 {
+  background-image: linear-gradient(to top right, #10b981, #14b8a6) !important;
+}
+
+/* Exception for dark badges & text-black elements inside bright badges */
+.light-mode .bg-gradient-to-tr.from-emerald-500.to-teal-400 .text-black {
+  color: #000000 !important;
+}
+
+/* Border overrides */
+.light-mode .border-gray-900,
+.light-mode .border-gray-800,
+.light-mode .border-gray-700 {
+  border-color: #e2e8f0 !important;
+}
+
+.light-mode .border-emerald-500\/10 {
+  border-color: rgba(16, 185, 129, 0.15) !important;
+}
+
+/* Hover overrides */
+.light-mode .hover\:bg-gray-950:hover {
+  background-color: #f1f5f9 !important;
+}
+
+.light-mode .hover\:bg-black\/30:hover {
+  background-color: #f1f5f9 !important;
+}
+
+.light-mode .hover\:text-white:hover {
+  color: #0f172a !important;
+}
+
+.light-mode .hover\:border-emerald-500\/30:hover {
+  border-color: rgba(16, 185, 129, 0.4) !important;
+}
+
+/* Selection */
+.light-mode ::selection {
+  background-color: rgba(16, 185, 129, 0.15) !important;
+  color: #047857 !important;
+}
+
+/* Scrollbars */
+.light-mode ::-webkit-scrollbar-track {
+  background: #f8fafc !important;
+}
+
+.light-mode ::-webkit-scrollbar-thumb {
+  background: #cbd5e1 !important;
+  border-color: #f8fafc !important;
+}
+
+.light-mode ::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8 !important;
+}
