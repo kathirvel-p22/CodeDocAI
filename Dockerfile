@@ -1,7 +1,7 @@
 # Dockerfile for Render Deployment
 # Builds both frontend and backend in Docker
 
-FROM node:18 AS builder
+FROM node:20 AS builder
 
 WORKDIR /app
 
@@ -18,7 +18,7 @@ COPY . .
 RUN npm run build
 
 # Production stage
-FROM node:18
+FROM node:20
 
 WORKDIR /app
 
