@@ -408,7 +408,7 @@ export default function DigitalTwinPanel({ agentsReport, metrics, projectName, k
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
         {/* Visualizer Frame */}
-        <div className="lg:col-span-2 bg-[#0b0c11] border border-gray-900 rounded-2xl p-5 shadow-xl flex flex-col justify-between min-h-[480px] relative overflow-hidden">
+        <div className="lg:col-span-2 bg-[#0b0c11] border border-gray-900 rounded-2xl p-5 shadow-xl flex flex-col min-h-[700px] relative">
           
           {/* Visualizer Controls */}
           <div className="flex items-center justify-between border-b border-gray-900 pb-4 mb-4 z-10">
@@ -471,7 +471,7 @@ export default function DigitalTwinPanel({ agentsReport, metrics, projectName, k
 
           {/* Conditional Rendering: Interactive vs Simple Graph */}
           {graphView === 'interactive' && knowledgeGraph ? (
-            <div className="flex-1 -mx-5 -mb-5">
+            <div className="flex-1 min-h-[600px]">
               <InteractiveKnowledgeGraph
                 knowledgeGraph={knowledgeGraph}
                 onNodeClick={(node) => {

@@ -30,7 +30,7 @@ services:
     container_name: codedocai-app
     restart: always
     ports:
-      - "3000:3000"
+      - "0.0.0.0:3000:3000"  # Allows network access from other devices
     environment:
       # Application Configuration
       - NODE_ENV=production

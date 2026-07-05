@@ -268,16 +268,101 @@ export default function InteractiveKnowledgeGraph({
   ];
 
   return (
-    <div className="relative w-full h-[700px] bg-[#07080a] rounded-2xl border border-gray-900 overflow-hidden">
-      {/* React Flow Canvas */}
-      <ReactFlow
-        nodes={filteredNodes}
-        edges={filteredEdges}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        onNodeClick={handleNodeClick}
-        onPaneClick={resetHighlight}
-        connectionLineType={ConnectionLineType.SmoothStep}
+    <div className="flex flex-col gap-3 w-full h-full">
+      {/* Control Panel - Above the Graph */}
+      <div className="flex flex-wrap gap-3 bg-gray-900/50 backdrop-blur border border-gray-800 rounded-xl p-4">
+        {/* Title Section */}
+        <div className="flex items-center space-x-2 flex-shrink-0">
+          <Network className="h-5 w-5 text-emerald-400" />
+          <h3 className="text-sm font-bold text-white">Interactive Knowledge Graph</h3>
+          <span className="text-xs text-gray-500">
+            {filteredNodes.length} components • {filteredEdges.length} dependencies
+          </span>
+        </div>
+
+        {/* Search Box */}
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-500" />
+          <input
+            type="text"
+            placeholder="Search components..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full bg-gray-950 border border-gray-800 rounded-lg pl-9 pr-3 py-2 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-emerald-500/30"
+          />
+        </div>
+
+        {/* Mini Map Toggle */}
+        <button
+          onClick={() => setShowMiniMap(!showMiniMap)}
+          className="px-3 py-2 bg-gray-950 hover:bg-gray-800 border border-gray-800 rounded-lg text-gray-400 hover:text-white transition-colors flex items-center gap-2"
+        >
+          {showMiniMap ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
+          <span className="text-xs">Mini Map</span>
+        </button>
+      </div>
+
+      {/* Layer Filters - Separate Row */}
+      <div className="bg-gray-900/50 backdrop-blur border border-gray-800 rounded-xl p-3">
+        <div className="flex items-center gap-4 flex-wrap">
+          <div className="flex items-center space-x-1.5 flex-shrink-0">
+            <Filter className="h-4 w-4 text-gray-400" />
+            <span className="text-xs font-medium text-gray-300">Filter by Layer:</span>
+          </div>
+          <div className="flex flex-wrap gap-2 flex-1">
+            {layerOptions.map(layer => (
+              <button
+                key={layer.key}
+                onClick={() => toggleLayer(layer.key)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                  selectedLayers.has(layer.key)
+                    ? 'border'
+                    : 'bg-gray-950 text-gray-500 hover:text-gray-300 border border-transparent'
+                }`}
+                style={
+                  selectedLayers.has(layer.key)
+                    ? {
+                        backgroundColor: `${layer.color}15`,
+                        borderColor: `${layer.color}40`,
+                        color: layer.color
+                      }
+                    : {}
+                }
+              >
+                {layer.label}
+              </button>
+            ))}
+          </div>
+          
+          {/* Stats - Right Side */}
+          <div className="flex gap-4 flex-shrink-0">
+            <div>
+              <div className="text-[10px] text-gray-500">Avg Health</div>
+              <div className="text-sm font-bold text-emerald-400">
+                {Math.round(knowledgeGraph.statistics.averageHealth)}%
+              </div>
+            </div>
+            <div>
+              <div className="text-[10px] text-gray-500">Complexity</div>
+              <div className="text-sm font-bold text-amber-400">
+                {Math.round(knowledgeGraph.statistics.averageComplexity)}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* React Flow Graph - Full Width Below Controls */}
+      <div className="flex-1 bg-[#07080a] rounded-2xl border border-gray-900 overflow-hidden">
+        {/* React Flow Canvas */}
+        <ReactFlow
+          nodes={filteredNodes}
+          edges={filteredEdges}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          onNodeClick={handleNodeClick}
+          onPaneClick={resetHighlight}
+          connectionLineType={ConnectionLineType.SmoothStep}
         fitView
         minZoom={0.1}
         maxZoom={2}
@@ -306,109 +391,6 @@ export default function InteractiveKnowledgeGraph({
             maskColor="rgba(0, 0, 0, 0.6)"
           />
         )}
-
-        {/* Custom Control Panel */}
-        <Panel position="top-left" className="space-y-3">
-          {/* Title */}
-          <div className="bg-gray-900/95 backdrop-blur border border-gray-800 rounded-xl p-4 shadow-xl">
-            <div className="flex items-center space-x-2 mb-2">
-              <Network className="h-5 w-5 text-emerald-400" />
-              <h3 className="text-sm font-bold text-white">Interactive Knowledge Graph</h3>
-            </div>
-            <p className="text-xs text-gray-500">
-              {filteredNodes.length} components • {filteredEdges.length} dependencies
-            </p>
-          </div>
-
-          {/* Search */}
-          <div className="bg-gray-900/95 backdrop-blur border border-gray-800 rounded-xl p-3 shadow-xl">
-            <div className="relative">
-              <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-500" />
-              <input
-                type="text"
-                placeholder="Search components..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-gray-950 border border-gray-800 rounded-lg pl-9 pr-3 py-2 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-emerald-500/30"
-              />
-            </div>
-          </div>
-
-          {/* Layer Filters */}
-          <div className="bg-gray-900/95 backdrop-blur border border-gray-800 rounded-xl p-3 shadow-xl">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center space-x-1.5">
-                <Filter className="h-4 w-4 text-gray-400" />
-                <span className="text-xs font-medium text-gray-300">Filter by Layer</span>
-              </div>
-              <button
-                onClick={() => setShowMiniMap(!showMiniMap)}
-                className="p-1 hover:bg-gray-800 rounded text-gray-400 hover:text-white transition-colors"
-              >
-                {showMiniMap ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
-              </button>
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {layerOptions.map(layer => (
-                <button
-                  key={layer.key}
-                  onClick={() => toggleLayer(layer.key)}
-                  className={`px-2 py-1 rounded-lg text-xs font-medium transition-all ${
-                    selectedLayers.has(layer.key)
-                      ? 'border'
-                      : 'bg-gray-950 text-gray-500 hover:text-gray-300 border border-transparent'
-                  }`}
-                  style={
-                    selectedLayers.has(layer.key)
-                      ? {
-                          backgroundColor: `${layer.color}15`,
-                          borderColor: `${layer.color}40`,
-                          color: layer.color
-                        }
-                      : {}
-                  }
-                >
-                  {layer.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Stats */}
-          <div className="bg-gray-900/95 backdrop-blur border border-gray-800 rounded-xl p-3 shadow-xl">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <div className="text-[10px] text-gray-500 mb-0.5">Avg Health</div>
-                <div className="text-lg font-bold text-emerald-400">
-                  {Math.round(knowledgeGraph.statistics.averageHealth)}%
-                </div>
-              </div>
-              <div>
-                <div className="text-[10px] text-gray-500 mb-0.5">Complexity</div>
-                <div className="text-lg font-bold text-amber-400">
-                  {Math.round(knowledgeGraph.statistics.averageComplexity)}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Instructions */}
-          {!highlightedNodeId && (
-            <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="bg-blue-500/10 backdrop-blur border border-blue-500/20 rounded-xl p-3 shadow-xl"
-            >
-              <div className="flex items-start space-x-2">
-                <Info className="h-4 w-4 text-blue-400 mt-0.5 flex-shrink-0" />
-                <div className="text-xs text-blue-300 leading-relaxed">
-                  <strong>Tip:</strong> Click any node to highlight its dependencies. 
-                  Use mouse wheel to zoom, drag to pan.
-                </div>
-              </div>
-            </motion.div>
-          )}
-        </Panel>
 
         {/* Node Details Panel (when selected) */}
         {highlightedNodeId && (
@@ -513,6 +495,7 @@ export default function InteractiveKnowledgeGraph({
           </Panel>
         )}
       </ReactFlow>
+      </div>
     </div>
   );
 }
