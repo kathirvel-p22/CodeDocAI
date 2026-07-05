@@ -1,7 +1,23 @@
-# Simplified Docker build for CodeDocAI
-# Build frontend locally FIRST with: npm run build
-# Then run: docker-compose up --build
+# Dockerfile for Render Deployment
+# Builds both frontend and backend in Docker
 
+FROM node:18 AS builder
+
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install ALL dependencies (including devDependencies for build)
+RUN npm install
+
+# Copy source code
+COPY . .
+
+# Build frontend
+RUN npm run build
+
+# Production stage
 FROM node:18
 
 WORKDIR /app
@@ -12,8 +28,8 @@ COPY package*.json ./
 # Install production dependencies only
 RUN npm ci --only=production
 
-# Copy PRE-BUILT frontend from local dist/
-COPY dist ./dist
+# Copy built frontend from builder stage
+COPY --from=builder /app/dist ./dist
 
 # Copy backend server files
 COPY server.ts ./

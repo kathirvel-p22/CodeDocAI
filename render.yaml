@@ -1,0 +1,31 @@
+services:
+  # MongoDB Database
+  - type: pserv
+    name: codedocai-mongodb
+    env: docker
+    dockerfilePath: ./Dockerfile.mongo
+    disk:
+      name: mongodb-data
+      mountPath: /data/db
+      sizeGB: 1
+    envVars:
+      - key: MONGO_INITDB_DATABASE
+        value: codedocai
+
+  # CodeDocAI Application
+  - type: web
+    name: codedocai-app
+    env: docker
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+      - key: GEMINI_API_KEY
+        sync: false  # Set this in Render dashboard
+      - key: MONGODB_URI
+        value: mongodb://codedocai-mongodb:27017
+      - key: DB_NAME
+        value: codedocai
+    healthCheckPath: /
