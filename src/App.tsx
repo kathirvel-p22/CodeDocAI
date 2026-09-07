@@ -204,6 +204,7 @@ export default function App() {
   // Active Tab in Dashboard
   const [activeTab, setActiveTab] = useState<'dashboard' | 'folders' | 'architecture' | 'risks' | 'report' | 'history' | 'blueprints' | 'twin' | 'whatif'>('dashboard');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
+  const [isThemeMenuOpen, setIsThemeMenuOpen] = useState<boolean>(false);
 
   // History State
   const [history, setHistory] = useState<HistoryItem[]>([]);
@@ -214,45 +215,74 @@ export default function App() {
   // Export State
   const [isExporting, setIsExporting] = useState<boolean>(false);
 
-  // System-aware Theme State ('dark' | 'light')
-  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+  // Theme State: 'light' | 'dark' | 'system'
+  type ThemeMode = 'light' | 'dark' | 'system';
+  const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
+    if (typeof window === 'undefined') return 'system';
+    const stored = localStorage.getItem('codedocai-theme');
+    return stored === 'light' || stored === 'dark' || stored === 'system' ? stored : 'system';
+  });
+  const [systemPrefersDark, setSystemPrefersDark] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return true;
+    return window.matchMedia('(prefers-color-scheme: dark)').matches;
+  });
 
-  // Sync theme with system preference automatically
+  // Listen for OS theme changes (only relevant when themeMode === 'system')
   React.useEffect(() => {
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
     const handleThemeChange = (e: MediaQueryListEvent) => {
-      setTheme(e.matches ? 'dark' : 'light');
+      setSystemPrefersDark(e.matches);
     };
-    
-    // Set initial theme based on current OS preference
-    setTheme(mediaQuery.matches ? 'dark' : 'light');
-    
-    // Listen for changes to system theme
     if (mediaQuery.addEventListener) {
       mediaQuery.addEventListener('change', handleThemeChange);
     } else {
-      mediaQuery.addListener(handleThemeChange);
+      mediaQuery.addEventListener('change', handleThemeChange);
     }
-    
     return () => {
       if (mediaQuery.removeEventListener) {
         mediaQuery.removeEventListener('change', handleThemeChange);
       } else {
-        mediaQuery.removeListener(handleThemeChange);
+        mediaQuery.removeEventListener('change', handleThemeChange);
       }
     };
   }, []);
 
-  // Update HTML document class for theme overrides
+  // Compute the effective theme and apply it to <html>, persisting the user's choice.
   React.useEffect(() => {
-    if (theme === 'light') {
+    const effective: 'light' | 'dark' = themeMode === 'system' ? (systemPrefersDark ? 'dark' : 'light') : themeMode;
+    if (effective === 'light') {
       document.documentElement.classList.add('light-mode');
       document.documentElement.classList.remove('dark-mode');
     } else {
       document.documentElement.classList.add('dark-mode');
       document.documentElement.classList.remove('light-mode');
     }
-  }, [theme]);
+    document.documentElement.setAttribute('data-theme-mode', themeMode);
+    document.documentElement.setAttribute('data-theme-effective', effective);
+    try { localStorage.setItem('codedocai-theme', themeMode); } catch { /* no-op */ }
+  }, [themeMode, systemPrefersDark]);
+
+  const effectiveTheme: 'light' | 'dark' = themeMode === 'system' ? (systemPrefersDark ? 'dark' : 'light') : themeMode;
+  const cycleTheme = () => {
+    setThemeMode((prev) => (prev === 'system' ? 'light' : prev === 'light' ? 'dark' : 'system'));
+  };
+
+  // Close the theme dropdown when clicking outside it
+  React.useEffect(() => {
+    if (!isThemeMenuOpen) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (themeMenuRef.current && !themeMenuRef.current.contains(e.target as Node)) {
+        setIsThemeMenuOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setIsThemeMenuOpen(false); };
+    document.addEventListener('mousedown', onDocClick);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDocClick);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [isThemeMenuOpen]);
 
   // Load history on mount
   React.useEffect(() => {
@@ -654,6 +684,7 @@ export default function App() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
+  const themeMenuRef = useRef<HTMLDivElement>(null);
 
   // Sample Projects
   const SAMPLE_PROJECTS = [
@@ -1405,21 +1436,57 @@ def test_verify_token_weaknesses():
         </div>
 
         <div className="flex items-center space-x-3">
-          {/* System-aware Theme Toggle Button */}
-          <button
-            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-            className="flex items-center justify-center p-2 rounded-lg bg-gray-900 border border-gray-800 text-gray-400 hover:text-emerald-400 hover:border-emerald-500/30 transition-all cursor-pointer"
-            title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode (Auto-synced to your OS preference)`}
-          >
-            {theme === 'dark' ? (
-              <Moon className="h-4 w-4 text-emerald-400" />
-            ) : (
-              <Sun className="h-4 w-4 text-amber-500" />
+          {/* Theme Mode Switcher (Light / Dark / System) */}
+          <div className="relative" ref={themeMenuRef}>
+            <button
+              onClick={() => setIsThemeMenuOpen((v) => !v)}
+              className="flex items-center p-2 rounded-lg bg-gray-900 border border-gray-800 text-gray-400 hover:text-emerald-400 hover:border-emerald-500/30 transition-all cursor-pointer"
+              title={`Theme: ${themeMode === 'system' ? `System (${effectiveTheme})` : themeMode} — click to change`}
+              aria-haspopup="menu"
+              aria-expanded={isThemeMenuOpen}
+            >
+              {effectiveTheme === 'dark' ? (
+                <Moon className="h-4 w-4 text-emerald-400" />
+              ) : (
+                <Sun className="h-4 w-4 text-amber-500" />
+              )}
+              <span className="hidden md:inline ml-2 text-xs font-mono font-medium text-gray-400">
+                {themeMode === 'system' ? `SYSTEM (${effectiveTheme.toUpperCase()})` : themeMode.toUpperCase()}
+              </span>
+            </button>
+            {isThemeMenuOpen && (
+              <div
+                role="menu"
+                className="absolute right-0 mt-2 w-44 rounded-lg border border-gray-800 bg-[#090a0d] shadow-2xl shadow-black/40 overflow-hidden z-50"
+              >
+                {([
+                  { value: 'light', label: 'Light', icon: Sun, hint: 'Always light' },
+                  { value: 'dark', label: 'Dark', icon: Moon, hint: 'Always dark' },
+                  { value: 'system', label: 'System', icon: Sliders, hint: `Follow OS (${effectiveTheme})` },
+                ] as { value: ThemeMode; label: string; icon: any; hint: string }[]).map((opt) => {
+                  const Icon = opt.icon;
+                  const active = themeMode === opt.value;
+                  return (
+                    <button
+                      key={opt.value}
+                      role="menuitemradio"
+                      aria-checked={active}
+                      onClick={() => { setThemeMode(opt.value); setIsThemeMenuOpen(false); }}
+                      className={`w-full flex items-center gap-2 px-3 py-2 text-left text-xs font-mono transition-colors ${
+                        active
+                          ? 'bg-emerald-500/10 text-emerald-400'
+                          : 'text-gray-300 hover:bg-gray-900 hover:text-white'
+                      }`}
+                    >
+                      <Icon className="h-3.5 w-3.5" />
+                      <span className="flex-1">{opt.label}</span>
+                      <span className="text-[10px] text-gray-500">{opt.hint}</span>
+                    </button>
+                  );
+                })}
+              </div>
             )}
-            <span className="hidden md:inline ml-2 text-xs font-mono font-medium text-gray-400 hover:text-white">
-              OS Theme: {theme.toUpperCase()}
-            </span>
-          </button>
+          </div>
 
           {screen === 'dashboard' && (
             <>
