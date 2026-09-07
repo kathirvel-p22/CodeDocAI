@@ -267,7 +267,25 @@ export default function App() {
     setThemeMode((prev) => (prev === 'system' ? 'light' : prev === 'light' ? 'dark' : 'system'));
   };
 
-  // Close the theme dropdown when clicking outside it
+  const THEME_OPTIONS: { value: ThemeMode; label: string; description: string; icon: any; shortcut: string }[] = [
+    { value: 'light',  label: 'Light',  description: 'Always use the light palette.',     icon: Sun,     shortcut: 'L' },
+    { value: 'dark',   label: 'Dark',   description: 'Always use the dark palette.',      icon: Moon,    shortcut: 'D' },
+    { value: 'system', label: 'System', description: 'Follow your operating system theme.', icon: Sliders, shortcut: 'S' },
+  ];
+  const [themeFocusIndex, setThemeFocusIndex] = React.useState<number>(() => {
+    const idx = THEME_OPTIONS.findIndex((o) => o.value === themeMode);
+    return idx >= 0 ? idx : 2;
+  });
+
+  // Reset focus when the menu opens
+  React.useEffect(() => {
+    if (isThemeMenuOpen) {
+      const idx = THEME_OPTIONS.findIndex((o) => o.value === themeMode);
+      setThemeFocusIndex(idx >= 0 ? idx : 2);
+    }
+  }, [isThemeMenuOpen]);
+
+  // Close the theme dropdown when clicking outside it, and handle keyboard navigation
   React.useEffect(() => {
     if (!isThemeMenuOpen) return;
     const onDocClick = (e: MouseEvent) => {
@@ -275,14 +293,49 @@ export default function App() {
         setIsThemeMenuOpen(false);
       }
     };
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setIsThemeMenuOpen(false); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsThemeMenuOpen(false);
+        return;
+      }
+      // Letter shortcuts to pick a mode quickly while the menu is open
+      const letter = e.key.toLowerCase();
+      const byLetter = THEME_OPTIONS.find((o) => o.shortcut.toLowerCase() === letter);
+      if (byLetter) {
+        e.preventDefault();
+        setThemeMode(byLetter.value);
+        setIsThemeMenuOpen(false);
+        return;
+      }
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        setThemeFocusIndex((idx) => {
+          const dir = e.key === 'ArrowDown' ? 1 : -1;
+          const next = (idx + dir + THEME_OPTIONS.length) % THEME_OPTIONS.length;
+          return next;
+        });
+      } else if (e.key === 'Home') {
+        e.preventDefault();
+        setThemeFocusIndex(0);
+      } else if (e.key === 'End') {
+        e.preventDefault();
+        setThemeFocusIndex(THEME_OPTIONS.length - 1);
+      } else if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        const opt = THEME_OPTIONS[themeFocusIndex];
+        if (opt) {
+          setThemeMode(opt.value);
+          setIsThemeMenuOpen(false);
+        }
+      }
+    };
     document.addEventListener('mousedown', onDocClick);
     document.addEventListener('keydown', onKey);
     return () => {
       document.removeEventListener('mousedown', onDocClick);
       document.removeEventListener('keydown', onKey);
     };
-  }, [isThemeMenuOpen]);
+  }, [isThemeMenuOpen, themeFocusIndex]);
 
   // Load history on mount
   React.useEffect(() => {
@@ -1440,10 +1493,15 @@ def test_verify_token_weaknesses():
           <div className="relative" ref={themeMenuRef}>
             <button
               onClick={() => setIsThemeMenuOpen((v) => !v)}
-              className="flex items-center p-2 rounded-lg bg-gray-900 border border-gray-800 text-gray-400 hover:text-emerald-400 hover:border-emerald-500/30 transition-all cursor-pointer"
+              className={`flex items-center p-2 rounded-lg border transition-all cursor-pointer ${
+                isThemeMenuOpen
+                  ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-400'
+                  : 'bg-gray-900 border-gray-800 text-gray-400 hover:text-emerald-400 hover:border-emerald-500/30'
+              }`}
               title={`Theme: ${themeMode === 'system' ? `System (${effectiveTheme})` : themeMode} — click to change`}
-              aria-haspopup="menu"
+              aria-haspopup="listbox"
               aria-expanded={isThemeMenuOpen}
+              aria-label="Select theme"
             >
               {effectiveTheme === 'dark' ? (
                 <Moon className="h-4 w-4 text-emerald-400" />
@@ -1456,34 +1514,60 @@ def test_verify_token_weaknesses():
             </button>
             {isThemeMenuOpen && (
               <div
-                role="menu"
-                className="absolute right-0 mt-2 w-44 rounded-lg border border-gray-800 bg-[#090a0d] shadow-2xl shadow-black/40 overflow-hidden z-50"
+                role="listbox"
+                aria-label="Theme selection"
+                className="absolute right-0 mt-2 w-56 rounded-xl border border-gray-800 bg-[#090a0d] shadow-2xl shadow-black/60 overflow-hidden z-50"
               >
-                {([
-                  { value: 'light', label: 'Light', icon: Sun, hint: 'Always light' },
-                  { value: 'dark', label: 'Dark', icon: Moon, hint: 'Always dark' },
-                  { value: 'system', label: 'System', icon: Sliders, hint: `Follow OS (${effectiveTheme})` },
-                ] as { value: ThemeMode; label: string; icon: any; hint: string }[]).map((opt) => {
-                  const Icon = opt.icon;
-                  const active = themeMode === opt.value;
-                  return (
-                    <button
-                      key={opt.value}
-                      role="menuitemradio"
-                      aria-checked={active}
-                      onClick={() => { setThemeMode(opt.value); setIsThemeMenuOpen(false); }}
-                      className={`w-full flex items-center gap-2 px-3 py-2 text-left text-xs font-mono transition-colors ${
-                        active
-                          ? 'bg-emerald-500/10 text-emerald-400'
-                          : 'text-gray-300 hover:bg-gray-900 hover:text-white'
-                      }`}
-                    >
-                      <Icon className="h-3.5 w-3.5" />
-                      <span className="flex-1">{opt.label}</span>
-                      <span className="text-[10px] text-gray-500">{opt.hint}</span>
-                    </button>
-                  );
-                })}
+                <div className="px-3 pt-2.5 pb-1.5 border-b border-gray-800">
+                  <p className="text-[10px] font-mono text-gray-500 uppercase tracking-wider">Select Theme</p>
+                </div>
+                <div className="py-1.5">
+                  {THEME_OPTIONS.map((opt, i) => {
+                    const Icon = opt.icon;
+                    const active = themeMode === opt.value;
+                    const focused = themeFocusIndex === i;
+                    return (
+                      <button
+                        key={opt.value}
+                        role="option"
+                        aria-selected={active}
+                        tabIndex={focused ? 0 : -1}
+                        onClick={() => { setThemeMode(opt.value); setIsThemeMenuOpen(false); }}
+                        onMouseEnter={() => setThemeFocusIndex(i)}
+                        className={`w-full flex items-center gap-3 px-3 py-2.5 text-left text-xs transition-all ${
+                          active
+                            ? 'bg-emerald-500/10 text-emerald-400'
+                            : focused
+                            ? 'bg-gray-800/60 text-white'
+                            : 'text-gray-300 hover:bg-gray-900 hover:text-white'
+                        }`}
+                      >
+                        <div className={`flex-shrink-0 flex items-center justify-center w-7 h-7 rounded-md transition-colors ${
+                          active
+                            ? 'bg-emerald-500/20'
+                            : 'bg-gray-800'
+                        }`}>
+                          <Icon className={`h-3.5 w-3.5 ${active ? 'text-emerald-400' : 'text-gray-400'}`} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-[13px]">{opt.label}</span>
+                            {active && (
+                              <span className="text-[9px] font-mono text-emerald-500 bg-emerald-500/10 px-1.5 py-0.5 rounded-full border border-emerald-500/20">ACTIVE</span>
+                            )}
+                          </div>
+                          <p className="text-[10px] text-gray-500 mt-0.5 leading-tight">{opt.description}</p>
+                        </div>
+                        <kbd className="flex-shrink-0 text-[10px] font-mono px-1.5 py-0.5 rounded border border-gray-700 text-gray-500 bg-gray-900">{opt.shortcut}</kbd>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="px-3 pb-2.5 pt-1 border-t border-gray-800">
+                  <p className="text-[9px] text-gray-600 font-mono leading-relaxed">
+                    ↑↓ Navigate &nbsp;·&nbsp; L/D/S Quick pick &nbsp;·&nbsp; Esc Close
+                  </p>
+                </div>
               </div>
             )}
           </div>
