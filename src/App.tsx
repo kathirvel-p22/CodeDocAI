@@ -1036,30 +1036,316 @@ export default function App() {
     }
   };
 
-  // Renders a beautiful visual Git Diff between original code and the recommended refactor
+  // ── Diff Engine ─────────────────────────────────────────────────
+  type DiffLineType = 'add' | 'del' | 'context';
+  type DiffLine = { type: DiffLineType; text: string; oldLine: number | null; newLine: number | null };
+  type Hunk = { oldStart: number; newStart: number; lines: DiffLine[] };
+
+  const computeLineDiff = (a: string[], b: string[]): DiffLine[] => {
+    const m = a.length, n = b.length;
+    const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+    for (let i = 1; i <= m; i++) for (let j = 1; j <= n; j++) {
+      dp[i][j] = a[i - 1] === b[j - 1] ? dp[i - 1][j - 1] + 1 : Math.max(dp[i - 1][j], dp[i][j - 1]);
+    }
+    const backtrack = (i: number, j: number, out: DiffLine[]): void => {
+      if (i === 0 && j === 0) return;
+      if (i > 0 && j > 0 && a[i - 1] === b[j - 1]) {
+        backtrack(i - 1, j - 1, out);
+        out.push({ type: 'context', text: a[i - 1], oldLine: i, newLine: j });
+      } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
+        backtrack(i, j - 1, out);
+        out.push({ type: 'add', text: b[j - 1], oldLine: null, newLine: j });
+      } else {
+        backtrack(i - 1, j, out);
+        out.push({ type: 'del', text: a[i - 1], oldLine: i, newLine: null });
+      }
+    };
+    const result: DiffLine[] = [];
+    backtrack(m, n, result);
+    return result;
+  };
+
+  const splitIntoHunks = (lines: DiffLine[], context = 3): Hunk[] => {
+    const hunks: Hunk[] = [];
+    let i = 0;
+    while (i < lines.length) {
+      if (lines[i].type !== 'context') {
+        const start = Math.max(0, i - context);
+        const end = Math.min(lines.length - 1, i + context - 1 + lines.slice(i).findIndex(l => l.type === 'context' || l === lines[lines.length - 1]));
+        let j = end;
+        while (j + 1 < lines.length && lines[j + 1].type === 'context') j++;
+        const hunkLines = lines.slice(start, j + 1);
+        const oldLines = hunkLines.filter(l => l.oldLine !== null);
+        const newLines = hunkLines.filter(l => l.newLine !== null);
+        hunks.push({
+          oldStart: oldLines.length > 0 ? oldLines[0].oldLine! : 0,
+          newStart: newLines.length > 0 ? newLines[0].newLine! : 0,
+          lines: hunkLines,
+        });
+        i = j + 1;
+      } else { i++; }
+    }
+    return hunks;
+  };
+
+  // Word-level diff for inline highlighting within side-by-side cells
+  type WordSeg = { text: string; type: DiffLineType };
+  const computeWordDiff = (a: string, b: string): WordSeg[] => {
+    const wa = a.trim().split(/\s+/);
+    const wb = b.trim().split(/\s+/);
+    const diff = computeLineDiff(wa, wb);
+    return diff.map(l => ({ text: l.text, type: (l.type === 'add' ? 'add' : l.type === 'del' ? 'del' : 'context') as DiffLineType }));
+  };
+
+  // Apply Prism syntax highlighting to a code string and return HTML
+  const highlightCode = (code: string, lang: string): string => {
+    try {
+      const grammar = Prism.languages[lang] || Prism.languages['javascript'] || Prism.languages['markup'];
+      if (grammar) {
+        const highlighted = Prism.highlight(code, grammar, lang);
+        return highlighted;
+      }
+    } catch { /* no-op */ }
+    return code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  };
+
+  const detectLang = (code: string): string => {
+    if (code.includes('function') || code.includes('const ') || code.includes('=>') || code.includes('let ')) return 'javascript';
+    if (code.includes('def ') || code.includes('import ') && code.includes(':')) return 'python';
+    if (code.includes('interface ') || code.includes(': string') || code.includes(': number')) return 'typescript';
+    if (code.includes('<') && code.includes('>') && (code.includes('/') || code.includes('</'))) return 'markup';
+    if (code.includes('{') && code.includes(':') && !code.includes('function')) return 'javascript';
+    return 'javascript';
+  };
+
+  const DiffBadge = ({ type }: { type: DiffLineType }) => {
+    if (type === 'add') return <span className="text-emerald-400 font-bold select-none w-5 text-center flex-shrink-0">+</span>;
+    if (type === 'del') return <span className="text-red-400 font-bold select-none w-5 text-center flex-shrink-0">−</span>;
+    return <span className="text-gray-600 select-none w-5 text-center flex-shrink-0">&nbsp;</span>;
+  };
+
+  // ── Unified Diff Renderer ────────────────────────────────────────
   const renderUnifiedDiff = (before: string, after: string) => {
-    const beforeLines = before.trim().split('\n');
-    const afterLines = after.trim().split('\n');
+    const aLines = before.trim().split('\n');
+    const bLines = after.trim().split('\n');
+    const diff = computeLineDiff(aLines, bLines);
+    const hunks = splitIntoHunks(diff);
+    const lang = detectLang(before);
+    const hasChanges = diff.some(l => l.type !== 'context');
+
+    if (!hasChanges) {
+      return (
+        <div className="font-mono text-xs bg-[#030406] border border-gray-800 rounded-xl p-6 text-center text-gray-500">
+          No line-level differences detected.
+        </div>
+      );
+    }
+
+    const totalAdds = diff.filter(l => l.type === 'add').length;
+    const totalDels = diff.filter(l => l.type === 'del').length;
 
     return (
       <div className="font-mono text-xs bg-[#030406] border border-gray-900 rounded-xl overflow-hidden leading-relaxed text-left">
-        <div className="bg-gray-950 px-4 py-2.5 text-[10px] text-gray-500 border-b border-gray-900/50 flex justify-between items-center font-bold">
-          <span className="tracking-wider uppercase">Unified Suggested Diff</span>
-          <span className="text-emerald-400">-{beforeLines.length} / +{afterLines.length} Lines</span>
+        <div className="bg-gray-950 px-4 py-2.5 border-b border-gray-900/50 flex justify-between items-center">
+          <span className="text-[10px] text-gray-500 font-bold tracking-widest uppercase">Unified Suggested Diff</span>
+          <div className="flex items-center gap-3 text-[10px] font-mono">
+            <span className="text-red-400">−{totalDels}</span>
+            <span className="text-emerald-400">+{totalAdds}</span>
+            <span className="text-gray-600">{hunks.length} hunk{hunks.length !== 1 ? 's' : ''}</span>
+          </div>
         </div>
-        <div className="p-4 overflow-x-auto max-h-[350px] space-y-0.5">
-          {beforeLines.map((line, i) => (
-            <div key={`del-${i}`} className="flex bg-red-950/15 text-red-300 border-l-2 border-red-500 pl-2 pr-4 py-0.5 select-none hover:bg-red-950/25 transition-all">
-              <span className="text-red-500/50 w-6 text-right mr-3 shrink-0">-</span>
-              <span className="whitespace-pre">{line}</span>
+        <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
+          {hunks.map((hunk, hi) => (
+            <div key={hi} className="border-t border-gray-900 first:border-t-0">
+              {/* Hunk header */}
+              <div className="bg-gray-900/50 px-4 py-1.5 text-[10px] text-blue-400 font-bold">
+                {`@@ -${hunk.oldStart}, +${hunk.newStart} @@`}
+              </div>
+              {hunk.lines.map((line, li) => {
+                const segs = line.type === 'context'
+                  ? [{ text: line.text, type: 'context' as DiffLineType }]
+                  : line.type === 'add'
+                  ? [{ text: line.text, type: 'add' as DiffLineType }]
+                  : [{ text: line.text, type: 'del' as DiffLineType }];
+
+                return (
+                  <div
+                    key={li}
+                    className={`flex hover:bg-white/3 transition-colors ${
+                      line.type === 'add' ? 'bg-emerald-950/20' :
+                      line.type === 'del' ? 'bg-red-950/15' : ''
+                    }`}
+                  >
+                    {/* Old line number */}
+                    <span className={`w-12 flex-shrink-0 text-right pr-2 py-0.5 text-[10px] select-none border-r border-gray-900 ${
+                      line.type === 'del' ? 'text-red-500/60' : 'text-gray-600'
+                    }`}>
+                      {line.oldLine ?? ''}
+                    </span>
+                    {/* New line number */}
+                    <span className={`w-12 flex-shrink-0 text-right pr-2 py-0.5 text-[10px] select-none border-r border-gray-900 ${
+                      line.type === 'add' ? 'text-emerald-500/60' : 'text-gray-600'
+                    }`}>
+                      {line.newLine ?? ''}
+                    </span>
+                    {/* +/- badge */}
+                    <DiffBadge type={line.type} />
+                    {/* Code content */}
+                    <div
+                      className={`flex-1 px-3 py-0.5 overflow-x-auto whitespace-pre ${
+                        line.type === 'add' ? 'text-emerald-300' :
+                        line.type === 'del' ? 'text-red-300 line-through opacity-70' :
+                        'text-gray-300'
+                      }`}
+                      dangerouslySetInnerHTML={{ __html: highlightCode(line.text || ' ', lang) }}
+                    />
+                  </div>
+                );
+              })}
             </div>
           ))}
-          {afterLines.map((line, i) => (
-            <div key={`add-${i}`} className="flex bg-emerald-950/15 text-emerald-300 border-l-2 border-emerald-500 pl-2 pr-4 py-0.5 hover:bg-emerald-950/25 transition-all">
-              <span className="text-emerald-500/50 w-6 text-right mr-3 shrink-0">+</span>
-              <span className="whitespace-pre">{line}</span>
+        </div>
+        {/* Legend */}
+        <div className="flex items-center gap-4 px-4 py-2 border-t border-gray-900/50 text-[10px] text-gray-600 font-mono">
+          <span><span className="text-red-400">−</span> removed</span>
+          <span><span className="text-emerald-400">+</span> added</span>
+          <span className="text-gray-600">context</span>
+        </div>
+      </div>
+    );
+  };
+
+  // ── Enhanced Side-by-Side Diff Renderer ────────────────────────
+  const renderSideBySideDiff = (before: string, after: string) => {
+    const aLines = before.trim().split('\n');
+    const bLines = after.trim().split('\n');
+    const lineDiff = computeLineDiff(aLines, bLines);
+    const lang = detectLang(before);
+
+    const leftLines: { type: DiffLineType; text: string; wordSegs?: WordSeg[] }[] = [];
+    const rightLines: { type: DiffLineType; text: string; wordSegs?: WordSeg[] }[] = [];
+
+    let ai = 0, bi = 0;
+    for (const dl of lineDiff) {
+      if (dl.type === 'context') {
+        leftLines.push({ type: 'context', text: dl.text });
+        rightLines.push({ type: 'context', text: dl.text });
+      } else if (dl.type === 'del') {
+        // Peek at corresponding "add" line for word diff
+        const nextAdd = lineDiff.find((l, idx) => {
+          const currentIdx = lineDiff.indexOf(dl);
+          return idx > currentIdx && l.type === 'add';
+        });
+        if (nextAdd) {
+          const segs = computeWordDiff(dl.text, nextAdd.text);
+          leftLines.push({ type: 'del', text: dl.text, wordSegs: segs });
+          rightLines.push({ type: 'add', text: nextAdd.text, wordSegs: segs });
+        } else {
+          leftLines.push({ type: 'del', text: dl.text });
+          rightLines.push({ type: 'add', text: '' });
+        }
+      }
+    }
+
+    // Rebuild from raw lines for simplicity when pairing gets complex
+    const left: { type: DiffLineType; text: string; wordSegs?: WordSeg[] }[] = aLines.map((l, i) => ({ type: 'context' as DiffLineType, text: l }));
+    const right: { type: DiffLineType; text: string; wordSegs?: WordSeg[] }[] = bLines.map((l, i) => ({ type: 'context' as DiffLineType, text: l }));
+
+    for (const dl of lineDiff) {
+      if (dl.type === 'add') {
+        right.push({ type: 'add', text: dl.text });
+      } else if (dl.type === 'del') {
+        left.push({ type: 'del', text: dl.text });
+      }
+    }
+
+    const renderCell = (line: { type: DiffLineType; text: string; wordSegs?: WordSeg[] }, isLeft: boolean) => {
+      const bgClass = line.type === 'add'
+        ? 'bg-emerald-950/20'
+        : line.type === 'del'
+        ? 'bg-red-950/15'
+        : '';
+      const textClass = line.type === 'add'
+        ? 'text-emerald-300'
+        : line.type === 'del'
+        ? 'text-red-300'
+        : 'text-gray-300';
+
+      if (line.wordSegs) {
+        return (
+          <div className={`flex ${bgClass} min-h-[1.7rem]`}>
+            {isLeft
+              ? line.wordSegs.filter(s => s.type !== 'add').map((s, i) => (
+                  <span key={i} className={s.type === 'del' ? 'bg-red-500/30 text-red-200 rounded px-0.5' : 'text-gray-300'}>
+                    {s.text}
+                  </span>
+                ))
+              : line.wordSegs.filter(s => s.type !== 'context' || true).map((s, i) => (
+                  <span key={i} className={s.type === 'add' ? 'bg-emerald-500/30 text-emerald-200 rounded px-0.5' : 'text-gray-300'}>
+                    {s.text}
+                  </span>
+                ))
+            }
+          </div>
+        );
+      }
+
+      if (line.text === '') {
+        return <div className={`flex ${bgClass} min-h-[1.7rem]`} />;
+      }
+
+      return (
+        <div
+          className={`${bgClass} ${textClass} overflow-x-auto whitespace-pre px-3 py-0.5 min-h-[1.7rem] flex items-start`}
+          dangerouslySetInnerHTML={{ __html: highlightCode(line.text, lang) }}
+        />
+      );
+    };
+
+    const maxRows = Math.max(left.length, right.length);
+    const addedCount = right.filter(l => l.type === 'add').length;
+    const removedCount = left.filter(l => l.type === 'del').length;
+
+    return (
+      <div className="font-mono text-xs bg-[#030406] border border-gray-900 rounded-xl overflow-hidden leading-relaxed text-left">
+        <div className="bg-gray-950 px-4 py-2 border-b border-gray-900/50 flex justify-between items-center">
+          <span className="text-[10px] text-gray-500 font-bold tracking-widest uppercase">Side-by-Side Diff</span>
+          <div className="flex items-center gap-3 text-[10px] font-mono">
+            <span className="text-red-400">−{removedCount} removed</span>
+            <span className="text-emerald-400">+{addedCount} added</span>
+          </div>
+        </div>
+        <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
+          {/* Column headers */}
+          <div className="grid grid-cols-2 border-b border-gray-900 sticky top-0 z-10 bg-[#07080b]">
+            <div className="px-3 py-1.5 text-[10px] text-red-400 font-bold border-r border-gray-900 flex items-center gap-1.5">
+              <span className="h-1.5 w-1.5 rounded-full bg-red-500"></span>ORIGINAL
             </div>
-          ))}
+            <div className="px-3 py-1.5 text-[10px] text-emerald-400 font-bold flex items-center gap-1.5">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>REFACTORED
+            </div>
+          </div>
+          {Array.from({ length: maxRows }, (_, i) => {
+            const l = left[i];
+            const r = right[i];
+            return (
+              <div key={i} className="grid grid-cols-2 border-t border-gray-900/50 hover:bg-white/[0.02]">
+                <div className="border-r border-gray-900/50">
+                  {l ? renderCell(l, true) : <div className="min-h-[1.7rem]" />}
+                </div>
+                <div>
+                  {r ? renderCell(r, false) : <div className="min-h-[1.7rem]" />}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <div className="flex items-center gap-4 px-4 py-2 border-t border-gray-900/50 text-[10px] text-gray-600 font-mono">
+          <span><span className="text-red-400 bg-red-500/20 px-1 rounded">changed</span> word-level diff</span>
+          <span className="text-gray-700">·</span>
+          <span className="text-emerald-400 bg-emerald-500/10 px-1 rounded">added</span>
+          <span className="text-gray-700">·</span>
+          <span className="text-red-400 bg-red-500/10 px-1 rounded">removed</span>
         </div>
       </div>
     );
@@ -3378,58 +3664,59 @@ def test_verify_token_weaknesses():
                                                 {/* Display code based on selected tab mode */}
                                                 {(() => {
                                                   const mode = issueCodeTab[`${selectedFolder}-${idx}`] || 'diff';
+                                                  const lang = detectLang(issue.beforeCode || issue.afterCode);
+
                                                   if (mode === 'diff') {
                                                     return renderUnifiedDiff(issue.beforeCode, issue.afterCode);
                                                   }
-                                                  
+
                                                   if (mode === 'side') {
-                                                    return (
-                                                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                        <div className="space-y-2">
-                                                          <div className="text-[10px] text-red-400 font-mono uppercase tracking-wider flex items-center space-x-1.5 pl-1">
-                                                            <span className="h-1.5 w-1.5 rounded-full bg-red-500"></span>
-                                                            <span>Original Code</span>
-                                                          </div>
-                                                          <pre className="p-4 bg-[#0c0d12] border border-red-500/10 rounded-xl font-mono text-xs overflow-x-auto text-gray-400 leading-relaxed text-left max-h-[350px]">
-                                                            {issue.beforeCode}
-                                                          </pre>
-                                                        </div>
-                                                        <div className="space-y-2">
-                                                          <div className="text-[10px] text-emerald-400 font-mono uppercase tracking-wider flex items-center space-x-1.5 pl-1">
-                                                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                                                            <span>Refactored Code</span>
-                                                          </div>
-                                                          <pre className="p-4 bg-[#090b0e] border border-emerald-500/10 rounded-xl font-mono text-xs overflow-x-auto text-emerald-300 leading-relaxed text-left max-h-[350px]">
-                                                            {issue.afterCode}
-                                                          </pre>
-                                                        </div>
-                                                      </div>
-                                                    );
+                                                    return renderSideBySideDiff(issue.beforeCode, issue.afterCode);
                                                   }
-                                                  
+
                                                   if (mode === 'original') {
                                                     return (
                                                       <div className="space-y-2">
-                                                        <div className="text-[10px] text-red-400 font-mono uppercase tracking-wider flex items-center space-x-1.5 pl-1">
-                                                          <span className="h-1.5 w-1.5 rounded-full bg-red-500"></span>
-                                                          <span>Original Codebase Snapshot</span>
+                                                        <div className="flex items-center justify-between px-1">
+                                                          <div className="text-[10px] text-red-400 font-mono uppercase tracking-wider flex items-center space-x-1.5">
+                                                            <span className="h-1.5 w-1.5 rounded-full bg-red-500"></span>
+                                                            <span>Original Codebase Snapshot</span>
+                                                          </div>
+                                                          <button
+                                                            onClick={() => copyToClipboard(issue.beforeCode)}
+                                                            className="flex items-center gap-1.5 text-[10px] text-gray-500 hover:text-emerald-400 transition-colors cursor-pointer px-2 py-1 rounded-lg hover:bg-emerald-500/10"
+                                                          >
+                                                            <Copy className="h-3 w-3" />
+                                                            Copy
+                                                          </button>
                                                         </div>
-                                                        <pre className="p-4 bg-[#0c0d12] border border-red-500/10 rounded-xl font-mono text-xs overflow-x-auto text-gray-400 text-left leading-relaxed max-h-[350px]">
-                                                          {issue.beforeCode}
-                                                        </pre>
+                                                        <div
+                                                          className="p-4 bg-[#0c0d12] border border-red-500/10 rounded-xl font-mono text-xs overflow-x-auto text-left max-h-[350px] leading-relaxed"
+                                                          dangerouslySetInnerHTML={{ __html: `<pre class="language-${lang}">${highlightCode(issue.beforeCode, lang)}</pre>` }}
+                                                        />
                                                       </div>
                                                     );
                                                   }
-                                                  
+
                                                   return (
                                                     <div className="space-y-2">
-                                                      <div className="text-[10px] text-emerald-400 font-mono uppercase tracking-wider flex items-center space-x-1.5 pl-1">
-                                                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
-                                                        <span>Refactored Staff-Level Candidate</span>
+                                                      <div className="flex items-center justify-between px-1">
+                                                        <div className="text-[10px] text-emerald-400 font-mono uppercase tracking-wider flex items-center space-x-1.5">
+                                                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+                                                          <span>Refactored Staff-Level Candidate</span>
+                                                        </div>
+                                                        <button
+                                                          onClick={() => copyToClipboard(issue.afterCode)}
+                                                          className="flex items-center gap-1.5 text-[10px] text-gray-500 hover:text-emerald-400 transition-colors cursor-pointer px-2 py-1 rounded-lg hover:bg-emerald-500/10"
+                                                        >
+                                                          <Copy className="h-3 w-3" />
+                                                          Copy
+                                                        </button>
                                                       </div>
-                                                      <pre className="p-4 bg-[#090b0e] border border-emerald-500/10 rounded-xl font-mono text-xs overflow-x-auto text-emerald-300 text-left leading-relaxed max-h-[350px]">
-                                                        {issue.afterCode}
-                                                      </pre>
+                                                      <div
+                                                        className="p-4 bg-[#090b0e] border border-emerald-500/10 rounded-xl font-mono text-xs overflow-x-auto text-emerald-300 text-left max-h-[350px] leading-relaxed"
+                                                        dangerouslySetInnerHTML={{ __html: `<pre class="language-${lang}">${highlightCode(issue.afterCode, lang)}</pre>` }}
+                                                      />
                                                     </div>
                                                   );
                                                 })()}
