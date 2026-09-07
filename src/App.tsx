@@ -45,7 +45,8 @@ import {
   Menu,
   Sun,
   Moon,
-  Network
+  Network,
+  Command,
 } from 'lucide-react';
 import {
   BarChart,
@@ -206,6 +207,9 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'folders' | 'architecture' | 'risks' | 'report' | 'history' | 'blueprints' | 'twin' | 'whatif'>('dashboard');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
   const [isThemeMenuOpen, setIsThemeMenuOpen] = useState<boolean>(false);
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState<boolean>(false);
+  const [commandSearch, setCommandSearch] = useState<string>('');
+  const [commandFocusIndex, setCommandFocusIndex] = useState<number>(0);
 
   // History State
   const [history, setHistory] = useState<HistoryItem[]>([]);
@@ -350,6 +354,85 @@ export default function App() {
       document.removeEventListener('keydown', onKey);
     };
   }, [isThemeMenuOpen, themeFocusIndex]);
+
+  // ── Command Palette ──────────────────────────────────────────────
+  type Command = {
+    id: string;
+    label: string;
+    category: string;
+    icon: any;
+    shortcut?: string;
+    action: () => void;
+  };
+
+  const COMMANDS: Command[] = [
+    // Navigation
+    { id: 'nav-dashboard',     label: 'Go to Executive Health',         category: 'Navigate', icon: Gauge,        action: () => { setActiveTab('dashboard');     setScreen('dashboard'); setIsCommandPaletteOpen(false); } },
+    { id: 'nav-twin',          label: 'Go to Digital Twin & AI CTO',     category: 'Navigate', icon: Network,      action: () => { setActiveTab('twin');           setScreen('dashboard'); setIsCommandPaletteOpen(false); } },
+    { id: 'nav-whatif',        label: 'Go to What-If Simulator',         category: 'Navigate', icon: Sparkles,     action: () => { setActiveTab('whatif');         setScreen('dashboard'); setIsCommandPaletteOpen(false); } },
+    { id: 'nav-folders',       label: 'Go to Folder Analysis',           category: 'Navigate', icon: Folder,       action: () => { setActiveTab('folders');        setScreen('dashboard'); setIsCommandPaletteOpen(false); } },
+    { id: 'nav-architecture',  label: 'Go to Architecture',             category: 'Navigate', icon: Layers,       action: () => { setActiveTab('architecture');   setScreen('dashboard'); setIsCommandPaletteOpen(false); } },
+    { id: 'nav-risks',         label: 'Go to Risk Assessment',          category: 'Navigate', icon: ShieldAlert,  action: () => { setActiveTab('risks');          setScreen('dashboard'); setIsCommandPaletteOpen(false); } },
+    { id: 'nav-report',        label: 'Go to Analysis Report',           category: 'Navigate', icon: BookOpen,     action: () => { setActiveTab('report');         setScreen('dashboard'); setIsCommandPaletteOpen(false); } },
+    { id: 'nav-history',       label: 'Go to Scan History',             category: 'Navigate', icon: History,      action: () => { setActiveTab('history');       setScreen('dashboard'); setIsCommandPaletteOpen(false); } },
+    { id: 'nav-blueprints',   label: 'Go to Blueprints',               category: 'Navigate', icon: FileCode,     action: () => { setActiveTab('blueprints');     setScreen('dashboard'); setIsCommandPaletteOpen(false); } },
+    // Analysis
+    { id: 'start-analysis',    label: 'Start New Codebase Analysis',     category: 'Analysis',  icon: UploadCloud,  shortcut: 'N', action: () => { setScreen('upload'); setFiles([]); setMetrics(null); setAgentsReport(null); setIsCommandPaletteOpen(false); } },
+    { id: 'run-last',          label: 'Re-run Last Analysis',            category: 'Analysis',  icon: RefreshCw,     action: () => { setIsCommandPaletteOpen(false); } },
+    // Export
+    { id: 'export-pdf',       label: 'Download PDF Report',             category: 'Export',   icon: Download,     action: () => { if (metrics) { exportReportToPDF(); } setIsCommandPaletteOpen(false); } },
+    { id: 'export-md',        label: 'Download Markdown Report',        category: 'Export',   icon: FileText,     action: () => { downloadMarkdownReport(); setIsCommandPaletteOpen(false); } },
+    { id: 'copy-md',          label: 'Copy Report to Clipboard',        category: 'Export',   icon: Copy,         action: () => { copyToClipboard(buildMarkdownReport()); setIsCommandPaletteOpen(false); } },
+    // Settings
+    { id: 'theme-light',      label: 'Switch to Light Theme',           category: 'Settings', icon: Sun,          action: () => { setThemeMode('light');    setIsCommandPaletteOpen(false); } },
+    { id: 'theme-dark',       label: 'Switch to Dark Theme',            category: 'Settings', icon: Moon,         action: () => { setThemeMode('dark');     setIsCommandPaletteOpen(false); } },
+    { id: 'theme-system',     label: 'Switch to System Theme',          category: 'Settings', icon: Sliders,      action: () => { setThemeMode('system');   setIsCommandPaletteOpen(false); } },
+  ];
+
+  const filteredCommands = commandSearch.trim()
+    ? COMMANDS.filter((c) =>
+        c.label.toLowerCase().includes(commandSearch.toLowerCase()) ||
+        c.category.toLowerCase().includes(commandSearch.toLowerCase())
+      )
+    : COMMANDS;
+
+  // Global Ctrl+K / Cmd+K listener to open the palette
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        setIsCommandPaletteOpen((v) => !v);
+        setCommandSearch('');
+        setCommandFocusIndex(0);
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
+
+  // Reset focus index when filtered list changes
+  React.useEffect(() => { setCommandFocusIndex(0); }, [commandSearch]);
+
+  // Palette keyboard handler (↑↓ Enter Esc)
+  React.useEffect(() => {
+    if (!isCommandPaletteOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setIsCommandPaletteOpen(false); return; }
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setCommandFocusIndex((i) => (i + 1) % Math.max(filteredCommands.length, 1));
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setCommandFocusIndex((i) => (i - 1 + Math.max(filteredCommands.length, 1)) % Math.max(filteredCommands.length, 1));
+      } else if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        const cmd = filteredCommands[commandFocusIndex];
+        if (cmd) cmd.action();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [isCommandPaletteOpen, commandFocusIndex, filteredCommands]);
 
   // Load history on mount
   React.useEffect(() => {
@@ -1817,6 +1900,18 @@ def test_verify_token_weaknesses():
               </div>
             )}
           </div>
+
+          {/* Command Palette Trigger */}
+          <button
+            onClick={() => { setIsCommandPaletteOpen(true); setCommandSearch(''); setCommandFocusIndex(0); }}
+            className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-gray-900 border border-gray-800 text-gray-400 hover:text-emerald-400 hover:border-emerald-500/30 transition-all cursor-pointer"
+            title="Command Palette (Ctrl+K)"
+            aria-label="Open command palette"
+            aria-keyshortcuts="Control+K"
+          >
+            <Command className="h-3.5 w-3.5" />
+            <span className="hidden lg:inline text-[11px] font-mono">⌘K</span>
+          </button>
 
           {screen === 'dashboard' && (
             <>
@@ -3826,6 +3921,84 @@ def test_verify_token_weaknesses():
           </div>
         </div>
       )}
+
+      {/* Command Palette (Ctrl+K) */}
+      {isCommandPaletteOpen && (
+        <div
+          className="fixed inset-0 z-[90] flex items-start justify-center pt-[15vh] bg-black/60 backdrop-blur-sm"
+          onClick={() => setIsCommandPaletteOpen(false)}
+        >
+          <div
+            className="w-full max-w-xl bg-[#090a0d] border border-gray-800 rounded-2xl shadow-2xl shadow-black/80 overflow-hidden animate-[slideDown_0.15s_ease-out]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Search input */}
+            <div className="flex items-center gap-3 px-4 py-3.5 border-b border-gray-800">
+              <Command className="h-4 w-4 text-emerald-400 flex-shrink-0" />
+              <input
+                autoFocus
+                type="text"
+                placeholder="Type a command or search..."
+                value={commandSearch}
+                onChange={(e) => { setCommandSearch(e.target.value); setCommandFocusIndex(0); }}
+                className="flex-1 bg-transparent text-sm text-white placeholder-gray-500 outline-none font-['Plus_Jakarta_Sans']"
+                aria-label="Command search"
+              />
+              <kbd className="text-[10px] font-mono px-2 py-1 rounded border border-gray-700 text-gray-500 bg-gray-900">ESC</kbd>
+            </div>
+
+            {/* Results */}
+            <div className="max-h-80 overflow-y-auto py-2" role="listbox" aria-label="Commands">
+              {filteredCommands.length === 0 ? (
+                <div className="px-4 py-8 text-center text-sm text-gray-500">
+                  No commands match "{commandSearch}"
+                </div>
+              ) : (
+                (() => {
+                  let lastCategory = '';
+                  return filteredCommands.map((cmd, i) => {
+                    const showCategory = cmd.category !== lastCategory;
+                    lastCategory = cmd.category;
+                    const focused = commandFocusIndex === i;
+                    return (
+                      <React.Fragment key={cmd.id}>
+                        {showCategory && (
+                          <div className="px-4 pt-2 pb-1">
+                            <span className="text-[10px] font-mono text-gray-600 uppercase tracking-wider">{cmd.category}</span>
+                          </div>
+                        )}
+                        <button
+                          role="option"
+                          aria-selected={focused}
+                          onClick={() => cmd.action()}
+                          onMouseEnter={() => setCommandFocusIndex(i)}
+                          className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ${
+                            focused ? 'bg-emerald-500/10 text-white' : 'text-gray-300 hover:bg-gray-900'
+                          }`}
+                        >
+                          <cmd.icon className={`h-4 w-4 flex-shrink-0 ${focused ? 'text-emerald-400' : 'text-gray-500'}`} />
+                          <span className="flex-1 text-left">{cmd.label}</span>
+                          {cmd.shortcut && (
+                            <kbd className="text-[10px] font-mono px-1.5 py-0.5 rounded border border-gray-700 text-gray-500 bg-gray-900">{cmd.shortcut}</kbd>
+                          )}
+                        </button>
+                      </React.Fragment>
+                    );
+                  });
+                })()
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="px-4 py-2.5 border-t border-gray-800 flex items-center gap-4 text-[10px] font-mono text-gray-600">
+              <span><kbd className="text-gray-500">↑↓</kbd> Navigate</span>
+              <span><kbd className="text-gray-500">↵</kbd> Select</span>
+              <span><kbd className="text-gray-500">ESC</kbd> Close</span>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* PDF Export Progress Overlay */}
       {isExporting && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm">
