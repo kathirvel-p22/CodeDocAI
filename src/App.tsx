@@ -12,6 +12,7 @@ import {
   Folder,
   FileCode,
   CheckCircle2,
+  AlertCircle,
   AlertTriangle,
   Sparkles,
   Terminal,
@@ -214,6 +215,19 @@ export default function App() {
 
   // Export State
   const [isExporting, setIsExporting] = useState<boolean>(false);
+  const [pdfProgress, setPdfProgress] = useState<number>(0);
+  const [pdfStep, setPdfStep] = useState<string>('');
+
+  // Toast Notification State
+  interface ToastItem { id: number; type: 'success' | 'error' | 'info'; message: string; }
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const toastIdRef = useRef(0);
+  const showToast = (type: ToastItem['type'], message: string) => {
+    const id = ++toastIdRef.current;
+    setToasts((prev) => [...prev, { id, type, message }]);
+    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 4500);
+  };
+  const dismissToast = (id: number) => setToasts((prev) => prev.filter((t) => t.id !== id));
 
   // Theme State: 'light' | 'dark' | 'system'
   type ThemeMode = 'light' | 'dark' | 'system';
@@ -630,75 +644,307 @@ export default function App() {
     }
   };
 
-  // Export active report to A4 PDF using html2canvas and jspdf
+  // Export active report to A4 PDF — branded cover + capture + page numbers
   const exportReportToPDF = async () => {
     if (isExporting) return;
     setIsExporting(true);
+    setPdfProgress(0);
+    setPdfStep('Initialising...');
 
     const previousTab = activeTab;
-    // Temporarily switch to report tab to capture the full compiled engineering report
     setActiveTab('report');
-
-    // Wait for the DOM tab switch transition to complete
     await new Promise((resolve) => setTimeout(resolve, 350));
 
     try {
-      const element = document.getElementById('dashboard-content-panel');
-      if (!element) {
-        throw new Error('Capture target element #dashboard-content-panel not found.');
+      setPdfStep('Drawing cover page...');
+      setPdfProgress(10);
+
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const W = 210;
+      const H = 297;
+      const MARGIN = 18;
+      const CONTENT_W = W - MARGIN * 2;
+
+      // ── Cover Page ────────────────────────────────────────────────
+      // Background
+      pdf.setFillColor(7, 8, 11);
+      pdf.rect(0, 0, W, H, 'F');
+
+      // Top gradient strip
+      pdf.setFillColor(16, 185, 129);
+      pdf.rect(0, 0, W, 6, 'F');
+
+      // Left accent bar
+      pdf.setFillColor(16, 185, 129);
+      pdf.rect(0, 0, 4, H, 'F');
+
+      // App logo circle
+      pdf.setFillColor(16, 185, 129);
+      pdf.circle(MARGIN + 10, 36, 10, 'F');
+
+      // CPU icon approximation — four small lines inside circle
+      pdf.setDrawColor(0);
+      pdf.setLineWidth(0.6);
+      pdf.line(MARGIN + 10, 31, MARGIN + 10, 41);
+      pdf.line(MARGIN + 5, 36, MARGIN + 15, 36);
+
+      // App name
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(22);
+      pdf.setTextColor(16, 185, 129);
+      pdf.text('SoftDoc', MARGIN + 26, 34);
+      pdf.setTextColor(20, 184, 166);
+      pdf.text('AI', MARGIN + 26 + 38, 34);
+
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(8);
+      pdf.setTextColor(100, 116, 139);
+      pdf.text('SOFTWARE ENGINEERING INSPECTOR', MARGIN, 41);
+
+      // Divider
+      pdf.setDrawColor(16, 185, 129);
+      pdf.setLineWidth(0.4);
+      pdf.line(MARGIN, 48, W - MARGIN, 48);
+
+      // Report title
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(13);
+      pdf.setTextColor(241, 242, 246);
+      const title = currentProjectName ? `Analysis Report: ${currentProjectName}` : 'Codebase Analysis Report';
+      const titleLines = pdf.splitTextToSize(title, CONTENT_W);
+      pdf.text(titleLines, MARGIN, 62);
+
+      let y = 62 + titleLines.length * 6 + 8;
+
+      // Date
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(9);
+      pdf.setTextColor(100, 116, 139);
+      const now = new Date();
+      const dateStr = now.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+      const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+      pdf.text(`Generated: ${dateStr} at ${timeStr}`, MARGIN, y);
+      y += 6;
+      pdf.text(`Engine: SoftDocAI Inspector v2.5  |  PDF Export`, MARGIN, y);
+      y += 14;
+
+      // ── Summary Stats ─────────────────────────────────────────────
+      if (metrics) {
+        const critical = metrics.localIssues.filter((i) => i.severity === 'critical').length;
+        const high = metrics.localIssues.filter((i) => i.severity === 'high').length;
+        const medium = metrics.localIssues.filter((i) => i.severity === 'medium').length;
+        const low = metrics.localIssues.filter((i) => i.severity === 'low').length;
+
+        const stats = [
+          { label: 'Files Scanned', value: metrics.totalFiles.toString(), color: [241, 242, 246] },
+          { label: 'Lines of Code', value: metrics.totalLines.toString(), color: [241, 242, 246] },
+          { label: 'Folders', value: metrics.totalFolders.toString(), color: [241, 242, 246] },
+          { label: 'Issues Found', value: metrics.localIssues.length.toString(), color: [16, 185, 129] },
+          { label: 'Critical', value: critical.toString(), color: [239, 68, 68] },
+          { label: 'High', value: high.toString(), color: [249, 115, 22] },
+        ];
+
+        const CARD_W = (CONTENT_W - 5 * 4) / 3;
+        const CARD_H = 22;
+        const COLS = 3;
+
+        stats.forEach((stat, i) => {
+          const col = i % COLS;
+          const row = Math.floor(i / COLS);
+          const cx = MARGIN + col * (CARD_W + 4);
+          const cy = y + row * (CARD_H + 4);
+
+          pdf.setFillColor(13, 14, 18);
+          pdf.roundedRect(cx, cy, CARD_W, CARD_H, 2, 2, 'F');
+          pdf.setDrawColor(40, 40, 50);
+          pdf.setLineWidth(0.3);
+          pdf.roundedRect(cx, cy, CARD_W, CARD_H, 2, 2, 'S');
+
+          pdf.setFont('helvetica', 'bold');
+          pdf.setFontSize(13);
+          pdf.setTextColor(...(stat.color as [number, number, number]));
+          pdf.text(stat.value, cx + 6, cy + 10);
+
+          pdf.setFont('helvetica', 'normal');
+          pdf.setFontSize(7);
+          pdf.setTextColor(100, 116, 139);
+          pdf.text(stat.label, cx + 6, cy + 17);
+        });
+
+        y += Math.ceil(stats.length / COLS) * (CARD_H + 4) + 10;
       }
 
-      // Temporarily override height/overflow constraints so that everything is drawn completely on canvas
-      const originalHeight = element.style.height;
-      const originalMaxHeight = element.style.maxHeight;
-      const originalOverflow = element.style.overflow;
+      // ── Severity Bar ──────────────────────────────────────────────
+      if (metrics && metrics.localIssues.length > 0) {
+        const critical = metrics.localIssues.filter((i) => i.severity === 'critical').length;
+        const high = metrics.localIssues.filter((i) => i.severity === 'high').length;
+        const medium = metrics.localIssues.filter((i) => i.severity === 'medium').length;
+        const low = metrics.localIssues.filter((i) => i.severity === 'low').length;
+        const total = metrics.localIssues.length;
 
+        const barY = y;
+        const barH = 8;
+        const BAR_W = CONTENT_W;
+        let barX = MARGIN;
+
+        const drawSeg = (frac: number, r: number, g: number, b: number) => {
+          const segW = BAR_W * frac;
+          pdf.setFillColor(r, g, b);
+          pdf.rect(barX, barY, segW, barH, 'F');
+          barX += segW;
+        };
+
+        if (total > 0) {
+          drawSeg(critical / total, 239, 68, 68);
+          drawSeg(high / total, 249, 115, 22);
+          drawSeg(medium / total, 234, 179, 8);
+          drawSeg(low / total, 16, 185, 129);
+        }
+
+        pdf.setFont('helvetica', 'bold');
+        pdf.setFontSize(7);
+        y = barY + barH + 5;
+
+        const segs = [
+          { label: 'Critical', count: critical, color: [239, 68, 68] },
+          { label: 'High', count: high, color: [249, 115, 22] },
+          { label: 'Medium', count: medium, color: [234, 179, 8] },
+          { label: 'Low', count: low, color: [16, 185, 129] },
+        ];
+        segs.forEach((seg, i) => {
+          const sx = MARGIN + i * 50;
+          pdf.setFillColor(...(seg.color as [number, number, number]));
+          pdf.rect(sx, y, 4, 4, 'F');
+          pdf.setTextColor(150, 150, 150);
+          pdf.text(`${seg.label} ${seg.count}`, sx + 6, y + 3.5);
+        });
+        y += 14;
+      }
+
+      // ── Cover footer ──────────────────────────────────────────────
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(7);
+      pdf.setTextColor(60, 60, 80);
+      pdf.text('Confidential — SoftDocAI Generated Document', MARGIN, H - 12);
+      pdf.setTextColor(16, 185, 129);
+      pdf.text('codedocai.app', W - MARGIN, H - 12, { align: 'right' });
+
+      // ── Report Content Pages ────────────────────────────────────────
+      setPdfStep('Capturing report content...');
+      setPdfProgress(25);
+
+      const element = document.getElementById('dashboard-content-panel');
+      if (!element) throw new Error('Capture target #dashboard-content-panel not found.');
+
+      const prevH = element.style.height;
+      const prevMaxH = element.style.maxHeight;
+      const prevOverflow = element.style.overflow;
       element.style.height = 'auto';
       element.style.maxHeight = 'none';
       element.style.overflow = 'visible';
 
       const canvas = await html2canvas(element, {
-        scale: 2, // 2x scale for sharp high-DPI text resolution
+        scale: 2,
         useCORS: true,
         backgroundColor: '#07080a',
         logging: false,
-        allowTaint: true
+        allowTaint: true,
+        onclone: (clonedDoc) => {
+          const clonedEl = clonedDoc.getElementById('dashboard-content-panel');
+          if (clonedEl) {
+            (clonedEl as HTMLElement).style.height = 'auto';
+            (clonedEl as HTMLElement).style.maxHeight = 'none';
+            (clonedEl as HTMLElement).style.overflow = 'visible';
+          }
+        },
       });
 
-      // Restore original container style bounds immediately
-      element.style.height = originalHeight;
-      element.style.maxHeight = originalMaxHeight;
-      element.style.overflow = originalOverflow;
+      element.style.height = prevH;
+      element.style.maxHeight = prevMaxH;
+      element.style.overflow = prevOverflow;
+
+      setPdfStep('Adding pages...');
+      setPdfProgress(60);
 
       const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      const imgWidth = 210; // A4 page width in mm
-      const pageHeight = 297; // A4 page height in mm
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
-      let heightLeft = imgHeight;
-      let position = 0;
+      const imgW = 210;
+      const imgH = (canvas.height * imgW) / canvas.width;
+      const pageH = 297;
+      const headerH = 10;
+      const footerH = 10;
 
-      // Add first page
-      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
-      heightLeft -= pageHeight;
+      const usableH = pageH - headerH - footerH;
+      const totalPages = Math.ceil(imgH / usableH);
 
-      // Handle multi-page overflow
-      while (heightLeft >= 0) {
-        position = heightLeft - imgHeight;
-        pdf.addPage();
-        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight, undefined, 'FAST');
-        heightLeft -= pageHeight;
+      for (let page = 0; page < totalPages; page++) {
+        if (page > 0) pdf.addPage();
+
+        // Header bar
+        pdf.setFillColor(7, 8, 11);
+        pdf.rect(0, 0, W, headerH, 'F');
+        pdf.setFillColor(16, 185, 129);
+        pdf.rect(0, 0, W, 1.5, 'F');
+        pdf.setFont('helvetica', 'normal');
+        pdf.setFontSize(7);
+        pdf.setTextColor(100, 116, 139);
+        pdf.text('SoftDocAI — Codebase Analysis Report', MARGIN, 6.5);
+        pdf.text(`Page ${page + 1} of ${totalPages + 1}`, W - MARGIN, 6.5, { align: 'right' });
+
+        // Content slice
+        const srcY = page * usableH;
+        const sliceH = Math.min(usableH, imgH - srcY);
+        const sliceCanvas = document.createElement('canvas');
+        sliceCanvas.width = canvas.width;
+        sliceCanvas.height = Math.round((sliceH / imgH) * canvas.height);
+        const ctx = sliceCanvas.getContext('2d')!;
+        ctx.drawImage(canvas, 0, Math.round((srcY / imgH) * canvas.height), sliceCanvas.width, sliceCanvas.height, 0, 0, sliceCanvas.width, sliceCanvas.height);
+        const sliceData = sliceCanvas.toDataURL('image/png');
+        const sliceW = 210;
+        const sliceDisplayH = (sliceCanvas.height * sliceW) / sliceCanvas.width;
+
+        pdf.addImage(sliceData, 'PNG', 0, headerH, sliceW, sliceDisplayH);
+
+        // Footer bar
+        const footerY = pageH - footerH;
+        pdf.setFillColor(7, 8, 11);
+        pdf.rect(0, footerY, W, footerH, 'F');
+        pdf.setFillColor(16, 185, 129);
+        pdf.rect(0, footerY, W, 1.5, 'F');
+        pdf.setFontSize(6.5);
+        pdf.setTextColor(60, 60, 80);
+        const ts = now.toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
+        pdf.text(`Generated ${ts} by SoftDocAI Inspector`, MARGIN, footerY + 6.5);
       }
 
-      const formattedName = currentProjectName.replace(/[^a-zA-Z0-9]/g, '_');
-      pdf.save(`SoftDocAI_Report_${formattedName || 'Workspace'}.pdf`);
+      setPdfStep('Finalising...');
+      setPdfProgress(90);
+
+      const formattedName = (currentProjectName || 'Workspace').replace(/[^a-zA-Z0-9]/g, '_');
+      const timestamp = now.toISOString().slice(0, 10);
+      pdf.save(`SoftDocAI_Report_${formattedName}_${timestamp}.pdf`);
+
+      setPdfProgress(100);
+      setPdfStep('Done!');
+      setTimeout(() => {
+        setIsExporting(false);
+        setPdfProgress(0);
+        setPdfStep('');
+      }, 1200);
+
+      showToast('success', 'PDF report downloaded successfully!');
     } catch (err) {
       console.error('Failed to generate PDF Report:', err);
-      alert('Failed to compile PDF. Please verify your browser has canvas rendering support enabled.');
-    } finally {
-      // Revert back to the user's previously active tab
-      setActiveTab(previousTab);
       setIsExporting(false);
+      setPdfProgress(0);
+      setPdfStep('');
+      showToast('error', `PDF export failed: ${(err as Error).message}`);
+    } finally {
+      setActiveTab(previousTab);
+      if (isExporting) {
+        setIsExporting(false);
+        setPdfProgress(0);
+        setPdfStep('');
+      }
     }
   };
 
@@ -3580,6 +3826,63 @@ def test_verify_token_weaknesses():
           </div>
         </div>
       )}
+      {/* PDF Export Progress Overlay */}
+      {isExporting && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div className="bg-[#090a0d] border border-emerald-500/20 rounded-2xl shadow-2xl shadow-black/60 w-80 overflow-hidden">
+            <div className="bg-gradient-to-r from-emerald-600 to-teal-500 h-1.5 transition-all duration-300"
+              style={{ width: `${pdfProgress}%` }} />
+            <div className="p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="bg-emerald-500/10 p-2.5 rounded-xl">
+                  <Cpu className="h-5 w-5 text-emerald-400 animate-pulse" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-emerald-400 font-['Space_Grotesk']">Generating PDF Report</p>
+                  <p className="text-xs text-gray-500 font-mono mt-0.5">{pdfStep}</p>
+                </div>
+              </div>
+              <div className="w-full bg-gray-900 rounded-full h-2 overflow-hidden border border-gray-800">
+                <div
+                  className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 rounded-full transition-all duration-300 shadow-[0_0_10px_rgba(16,185,129,0.4)]"
+                  style={{ width: `${pdfProgress}%` }}
+                />
+              </div>
+              <p className="text-center text-xs font-mono text-gray-500 mt-3">{pdfProgress}%</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast Notifications */}
+      <div className="fixed bottom-6 right-6 z-[110] flex flex-col gap-2 pointer-events-none">
+        {toasts.map((toast) => (
+          <div
+            key={toast.id}
+            className={`pointer-events-auto flex items-start gap-3 px-4 py-3 rounded-xl border shadow-xl backdrop-blur-md transition-all duration-300 animate-[slideInRight_0.3s_ease-out] ${
+              toast.type === 'success' ? 'bg-emerald-950/80 border-emerald-500/30 text-emerald-300' :
+              toast.type === 'error'   ? 'bg-red-950/80 border-red-500/30 text-red-300' :
+              'bg-gray-900/80 border-gray-700/50 text-gray-300'
+            }`}
+          >
+            <div className={`mt-0.5 flex-shrink-0 ${
+              toast.type === 'success' ? 'text-emerald-400' :
+              toast.type === 'error'   ? 'text-red-400' : 'text-gray-400'
+            }`}>
+              {toast.type === 'success' ? <CheckCircle2 className="h-4 w-4" /> :
+               toast.type === 'error'   ? <AlertTriangle className="h-4 w-4" /> :
+               <AlertCircle className="h-4 w-4" />}
+            </div>
+            <p className="text-xs leading-relaxed flex-1">{toast.message}</p>
+            <button
+              onClick={() => dismissToast(toast.id)}
+              className="flex-shrink-0 text-gray-500 hover:text-gray-300 transition-colors cursor-pointer"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
