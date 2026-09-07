@@ -47,6 +47,10 @@ import {
   Moon,
   Network,
   Command,
+  XCircle,
+  Shield,
+  Wrench,
+  TestTube,
 } from 'lucide-react';
 import {
   BarChart,
@@ -452,6 +456,7 @@ export default function App() {
   const [foldersSubTab, setFoldersSubTab] = useState<'inspector' | 'testing'>('inspector');
   const [expandedIssueIndex, setExpandedIssueIndex] = useState<number | null>(null);
   const [severityFilter, setSeverityFilter] = useState<'all' | 'critical' | 'high' | 'medium' | 'low'>('all');
+  const [typeFilter, setTypeFilter] = useState<'all' | 'security' | 'performance' | 'maintainability' | 'testing'>('all');
   const [issueSortBy, setIssueSortBy] = useState<'severity' | 'filePath'>('severity');
   const [modalFile, setModalFile] = useState<{ path: string; line: number } | null>(null);
 
@@ -2965,82 +2970,144 @@ def test_verify_token_weaknesses():
                                 </div>
                               </div>
 
-                              {/* Filtering and Actions Toolbar */}
-                              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-[#0b0c11] border border-gray-900 rounded-2xl p-4.5 shadow-xl">
-                                <div className="flex flex-col sm:flex-row sm:items-center gap-4 flex-1">
-                                  <div className="flex items-center space-x-2.5 shrink-0">
-                                    <div className="bg-emerald-500/10 p-2 rounded-lg border border-emerald-500/20">
-                                      <Terminal className="h-4 w-4 text-emerald-400" />
-                                    </div>
-                                    <div>
-                                      <h4 className="text-sm font-bold text-white">Diagnostics & Search</h4>
-                                      <p className="text-[10px] text-gray-500 font-mono">FOLDER ISSUE FILTERING</p>
-                                    </div>
-                                  </div>
-                                  
-                                  {/* Search Input */}
-                                  <div className="relative flex-1 max-w-md w-full">
+                              {/* Advanced Filtering & Search Toolbar */}
+                              <div className="bg-[#0b0c11] border border-gray-900 rounded-2xl overflow-hidden shadow-xl">
+                                {/* Top row: search + controls */}
+                                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 p-4">
+                                  {/* Search */}
+                                  <div className="relative flex-1 w-full">
                                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                                       <Search className="h-3.5 w-3.5 text-gray-500" />
                                     </div>
                                     <input
                                       type="text"
-                                      placeholder="Search by file, message or senior commentary..."
+                                      placeholder="Search issues, files, messages..."
                                       value={folderSearchQuery}
                                       onChange={(e) => {
                                         setFolderSearchQuery(e.target.value);
                                         setExpandedIssueIndex(null);
                                       }}
-                                      className="w-full bg-gray-950 border border-gray-900 hover:border-gray-800 text-xs text-gray-300 rounded-xl pl-9 pr-8 py-2.5 outline-none focus:border-emerald-500/30 transition-all placeholder:text-gray-600 font-medium"
+                                      className="w-full bg-gray-950 border border-gray-800 hover:border-gray-700 text-xs text-gray-300 rounded-xl pl-9 pr-8 py-2.5 outline-none focus:border-emerald-500/40 transition-all placeholder:text-gray-600"
                                     />
                                     {folderSearchQuery && (
                                       <button
-                                        onClick={() => {
-                                          setFolderSearchQuery('');
-                                          setExpandedIssueIndex(null);
-                                        }}
-                                        className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-500 hover:text-white transition-all cursor-pointer"
+                                        onClick={() => { setFolderSearchQuery(''); setExpandedIssueIndex(null); }}
+                                        className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-500 hover:text-white cursor-pointer"
                                       >
                                         <X className="h-3.5 w-3.5" />
                                       </button>
                                     )}
                                   </div>
-                                </div>
-                                
-                                <div className="flex flex-wrap items-center gap-4 shrink-0">
-                                  <div className="flex items-center space-x-3">
-                                    <label htmlFor="severity-select" className="text-xs text-gray-400 font-medium">Severity:</label>
-                                    <select
-                                      id="severity-select"
-                                      value={severityFilter}
-                                      onChange={(e) => {
-                                        setSeverityFilter(e.target.value as any);
-                                        setExpandedIssueIndex(null);
-                                      }}
-                                      className="bg-gray-950 border border-gray-800 hover:border-gray-700 text-xs text-gray-300 rounded-xl px-3 py-2 outline-none focus:border-emerald-500/30 transition-all cursor-pointer font-semibold font-sans"
-                                    >
-                                      <option value="all">All Issues ({folderData.issues.length})</option>
-                                      <option value="critical">Critical ({folderData.issues.filter(i => i.severity === 'critical').length})</option>
-                                      <option value="high">High ({folderData.issues.filter(i => i.severity === 'high').length})</option>
-                                      <option value="medium">Medium ({folderData.issues.filter(i => i.severity === 'medium').length})</option>
-                                      <option value="low">Low ({folderData.issues.filter(i => i.severity === 'low').length})</option>
-                                    </select>
+
+                                  {/* Type filter chips */}
+                                  <div className="flex items-center gap-1.5 shrink-0">
+                                    {([
+                                      { value: 'all',             label: 'All',            icon: Bug,         color: 'text-gray-400',      bg: 'bg-gray-900' },
+                                      { value: 'security',         label: 'Security',       icon: Shield,      color: 'text-red-400',       bg: 'bg-red-500/10' },
+                                      { value: 'performance',      label: 'Performance',    icon: Gauge,       color: 'text-amber-400',     bg: 'bg-amber-500/10' },
+                                      { value: 'maintainability',  label: 'Maintainability',icon: Wrench,      color: 'text-blue-400',      bg: 'bg-blue-500/10' },
+                                      { value: 'testing',          label: 'Testing',        icon: TestTube,    color: 'text-purple-400',    bg: 'bg-purple-500/10' },
+                                    ] as { value: string; label: string; icon: any; color: string; bg: string }[]).map((opt) => {
+                                      const Icon = opt.icon;
+                                      const active = typeFilter === opt.value;
+                                      return (
+                                        <button
+                                          key={opt.value}
+                                          onClick={() => { setTypeFilter(opt.value as any); setExpandedIssueIndex(null); }}
+                                          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-all cursor-pointer border ${
+                                            active
+                                              ? `${opt.bg} ${opt.color} border-current/20`
+                                              : 'bg-gray-950 text-gray-500 border-gray-800 hover:text-gray-300 hover:border-gray-700'
+                                          }`}
+                                        >
+                                          <Icon className="h-3 w-3" />
+                                          {opt.label}
+                                        </button>
+                                      );
+                                    })}
                                   </div>
 
-                                  <div className="flex items-center space-x-3">
-                                    <label htmlFor="sort-select" className="text-xs text-gray-400 font-medium">Sort By:</label>
+                                  {/* Sort + Clear */}
+                                  <div className="flex items-center gap-2 shrink-0">
                                     <select
-                                      id="sort-select"
                                       value={issueSortBy}
-                                      onChange={(e) => {
-                                        setIssueSortBy(e.target.value as 'severity' | 'filePath');
-                                        setExpandedIssueIndex(null);
-                                      }}
-                                      className="bg-gray-950 border border-gray-800 hover:border-gray-700 text-xs text-gray-300 rounded-xl px-3 py-2 outline-none focus:border-emerald-500/30 transition-all cursor-pointer font-semibold font-sans"
+                                      onChange={(e) => { setIssueSortBy(e.target.value as 'severity' | 'filePath'); setExpandedIssueIndex(null); }}
+                                      className="bg-gray-950 border border-gray-800 text-xs text-gray-300 rounded-lg px-2.5 py-2 outline-none focus:border-emerald-500/40 cursor-pointer"
                                     >
-                                      <option value="severity">Severity (Critical to Low)</option>
-                                      <option value="filePath">File Path (Alphabetical)</option>
+                                      <option value="severity">Severity</option>
+                                      <option value="filePath">File Path</option>
                                     </select>
+                                    {(severityFilter !== 'all' || typeFilter !== 'all' || folderSearchQuery.trim() !== '') && (
+                                      <button
+                                        onClick={() => {
+                                          setSeverityFilter('all');
+                                          setTypeFilter('all');
+                                          setFolderSearchQuery('');
+                                          setExpandedIssueIndex(null);
+                                        }}
+                                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-gray-950 border border-gray-800 text-[11px] text-red-400 hover:text-red-300 hover:border-red-500/30 transition-all cursor-pointer"
+                                      >
+                                        <XCircle className="h-3 w-3" />
+                                        Clear
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {/* Bottom row: severity filter + results count */}
+                                <div className="flex flex-wrap items-center justify-between gap-2 px-4 pb-3.5 border-t border-gray-900">
+                                  {/* Severity pills */}
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-[10px] text-gray-500 font-mono uppercase mr-1">Severity:</span>
+                                    {([
+                                      { value: 'all',      label: 'All',       color: 'text-gray-400',      dot: 'bg-gray-500' },
+                                      { value: 'critical', label: 'Critical',  color: 'text-red-400',        dot: 'bg-red-500' },
+                                      { value: 'high',     label: 'High',      color: 'text-orange-400',     dot: 'bg-orange-500' },
+                                      { value: 'medium',   label: 'Medium',    color: 'text-yellow-400',    dot: 'bg-yellow-500' },
+                                      { value: 'low',      label: 'Low',       color: 'text-emerald-400',   dot: 'bg-emerald-500' },
+                                    ] as { value: string; label: string; color: string; dot: string }[]).map((sev) => {
+                                      const active = severityFilter === sev.value;
+                                      const count = folderData.issues.filter((i) => sev.value === 'all' ? true : i.severity === sev.value).length;
+                                      if (count === 0 && sev.value !== 'all') return null;
+                                      return (
+                                        <button
+                                          key={sev.value}
+                                          onClick={() => { setSeverityFilter(sev.value as any); setExpandedIssueIndex(null); }}
+                                          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium transition-all cursor-pointer border ${
+                                            active
+                                              ? `${sev.color} bg-gray-800 border-current/30`
+                                              : 'text-gray-500 bg-gray-950 border-gray-800 hover:text-gray-300 hover:border-gray-700'
+                                          }`}
+                                        >
+                                          <span className={`w-1.5 h-1.5 rounded-full ${sev.dot}`} />
+                                          {sev.label}
+                                          <span className={`ml-0.5 px-1 py-0.5 rounded text-[9px] font-mono ${
+                                            active ? 'bg-black/30' : 'bg-gray-800'
+                                          }`}>{count}</span>
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+
+                                  {/* Results count */}
+                                  <div className="flex items-center gap-1.5 text-[11px] text-gray-500 font-mono">
+                                    <span className="text-gray-600">Showing</span>
+                                    <span className="text-emerald-400 font-semibold">{(() => {
+                                      const total = folderData.issues.length;
+                                      const filtered = folderData.issues.filter((issue) => {
+                                        if (severityFilter !== 'all' && issue.severity !== severityFilter) return false;
+                                        if (typeFilter !== 'all' && issue.type !== typeFilter) return false;
+                                        if (folderSearchQuery.trim() !== '') {
+                                          const q = folderSearchQuery.toLowerCase();
+                                          if (!(issue.file || '').toLowerCase().includes(q) &&
+                                              !(issue.message || '').toLowerCase().includes(q) &&
+                                              !(issue.seniorCommentary || '').toLowerCase().includes(q)) return false;
+                                        }
+                                        return true;
+                                      }).length;
+                                      return `${filtered}/${total}`;
+                                    })()}</span>
+                                    <span className="text-gray-600">issues</span>
                                   </div>
                                 </div>
                               </div>
@@ -3053,7 +3120,11 @@ def test_verify_token_weaknesses():
                                     if (severityFilter !== 'all' && issue.severity !== severityFilter) {
                                       return false;
                                     }
-                                    // 2. Search query filter (matches file path, message, or senior commentary)
+                                    // 2. Type/category filter
+                                    if (typeFilter !== 'all' && issue.type !== typeFilter) {
+                                      return false;
+                                    }
+                                    // 3. Search query filter (matches file path, message, or senior commentary)
                                     if (folderSearchQuery.trim() !== '') {
                                       const query = folderSearchQuery.toLowerCase();
                                       const matchesFile = issue.file ? issue.file.toLowerCase().includes(query) : false;
@@ -3092,23 +3163,25 @@ def test_verify_token_weaknesses():
 
                                   if (sortedIssues.length === 0) {
                                     const searchActive = folderSearchQuery.trim() !== '';
+                                    const typeLabel = typeFilter !== 'all' ? typeFilter : null;
+                                    const sevLabel = severityFilter !== 'all' ? severityFilter : null;
+                                    const labels = [sevLabel, typeLabel, searchActive ? `"${folderSearchQuery}"` : null].filter(Boolean).join(' + ');
                                     return (
                                       <div className="text-center py-12 bg-[#0b0c11] border border-gray-900 rounded-2xl text-xs text-gray-500 space-y-3.5">
                                         <p className="leading-relaxed">
-                                          {searchActive 
-                                            ? `No issues matching "${folderSearchQuery}" found with ${severityFilter} severity.` 
-                                            : `No ${severityFilter} severity issues identified in this folder.`
-                                          }
+                                          {labels ? `No issues found for ${labels}.` : 'No issues identified in this folder.'}
                                         </p>
-                                        {searchActive && (
+                                        {(searchActive || severityFilter !== 'all' || typeFilter !== 'all') && (
                                           <button
                                             onClick={() => {
                                               setFolderSearchQuery('');
+                                              setSeverityFilter('all');
+                                              setTypeFilter('all');
                                               setExpandedIssueIndex(null);
                                             }}
                                             className="text-xs text-emerald-400 hover:text-emerald-300 font-semibold cursor-pointer underline bg-emerald-500/5 px-3 py-1 rounded-full border border-emerald-500/10 transition-all hover:bg-emerald-500/10"
                                           >
-                                            Clear search query
+                                            Clear all filters
                                           </button>
                                         )}
                                       </div>
