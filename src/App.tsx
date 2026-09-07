@@ -32,6 +32,7 @@ import {
   UploadCloud,
   FileText,
   ShieldAlert,
+  ShieldCheck,
   Gauge,
   X,
   BookOpen,
@@ -225,6 +226,8 @@ export default function App() {
   const [isExporting, setIsExporting] = useState<boolean>(false);
   const [pdfProgress, setPdfProgress] = useState<number>(0);
   const [pdfStep, setPdfStep] = useState<string>('');
+  const [badgeTab, setBadgeTab] = useState<'markdown' | 'svg' | 'html'>('markdown');
+  const [badgeThreshold, setBadgeThreshold] = useState<number>(70);
 
   // Toast Notification State
   interface ToastItem { id: number; type: 'success' | 'error' | 'info'; message: string; }
@@ -387,6 +390,7 @@ export default function App() {
     { id: 'export-pdf',       label: 'Download PDF Report',             category: 'Export',   icon: Download,     action: () => { if (metrics) { exportReportToPDF(); } setIsCommandPaletteOpen(false); } },
     { id: 'export-md',        label: 'Download Markdown Report',        category: 'Export',   icon: FileText,     action: () => { downloadMarkdownReport(); setIsCommandPaletteOpen(false); } },
     { id: 'copy-md',          label: 'Copy Report to Clipboard',        category: 'Export',   icon: Copy,         action: () => { copyToClipboard(buildMarkdownReport()); setIsCommandPaletteOpen(false); } },
+    { id: 'ci-badge',         label: 'Open CI Badge Generator',         category: 'Export',   icon: ShieldCheck,  action: () => { setActiveTab('report'); setScreen('dashboard'); setIsCommandPaletteOpen(false); } },
     // Settings
     { id: 'theme-light',      label: 'Switch to Light Theme',           category: 'Settings', icon: Sun,          action: () => { setThemeMode('light');    setIsCommandPaletteOpen(false); } },
     { id: 'theme-dark',       label: 'Switch to Dark Theme',            category: 'Settings', icon: Moon,         action: () => { setThemeMode('dark');     setIsCommandPaletteOpen(false); } },
@@ -1035,6 +1039,62 @@ export default function App() {
       }
     }
   };
+
+  // ── CI Badge Generator ───────────────────────────────────────────
+  type BadgeStatus = 'passed' | 'failed' | 'warning';
+  const computeBadgeStatus = (): BadgeStatus => {
+    if (!metrics) return 'warning';
+    const critical = metrics.localIssues.filter(i => i.severity === 'critical').length;
+    const high = metrics.localIssues.filter(i => i.severity === 'high').length;
+    const totalIssues = metrics.localIssues.length;
+    const score = agentsReport?.architecture?.grade
+      ? (agentsReport.architecture.grade.charCodeAt(0) - 64) * 10
+      : 0;
+    if (critical > 0 || score < badgeThreshold) return 'failed';
+    if (high > 0 || totalIssues > 5) return 'warning';
+    return 'passed';
+  };
+
+  const badgeStatus = computeBadgeStatus();
+  const statusLabel = badgeStatus === 'passed' ? 'PASSED' : badgeStatus === 'failed' ? 'FAILED' : 'WARNING';
+  const statusColor = badgeStatus === 'passed' ? { bg: '#16a34a', fg: '#ffffff', rgb: [22,163,74] }
+    : badgeStatus === 'failed' ? { bg: '#dc2626', fg: '#ffffff', rgb: [220,38,38] }
+    : { bg: '#d97706', fg: '#ffffff', rgb: [217,119,6] };
+
+  const projectSlug = (currentProjectName || 'CodeDocAI').replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase();
+
+  const BADGE_MARKDOWN = `[![CodeDocAI](https://img.shields.io/badge/CodeDocAI-${statusLabel}-${encodeURIComponent(statusColor.bg)}?style=flat-square)](https://codedocai.app)`;
+
+  const BADGE_SVG = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="128" height="20" role="img" aria-label="CodeDocAI ${statusLabel}">
+  <title>CodeDocAI: ${statusLabel}</title>
+  <linearGradient id="s" x2="0" y2="100%">
+    <stop offset="0" stop-color="${statusColor.bg}" stop-opacity=".9"/>
+    <stop offset="1" stop-color="${statusColor.bg}" stop-opacity=".6"/>
+  </linearGradient>
+  <maskGroup id="m">
+    <rect width="100" height="20" rx="4" fill="#fff"/>
+  </maskGroup>
+  <g mask="url(#m)">
+    <rect width="86" height="20" fill="${statusColor.bg}"/>
+    <rect x="86" width="44" height="20" fill="url(#s)"/>
+    <rect width="20" height="20" fill="#111" fill-opacity=".3"/>
+  </g>
+  <g fill="${statusColor.fg}" text-anchor="middle" font-family="Verdana,DejaVu Sans,sans-serif" font-size="11">
+    <text x="43" y="14" fill="${statusColor.fg}">CodeDocAI</text>
+    <text x="108" y="14" fill="${statusColor.fg}">${statusLabel}</text>
+  </g>
+</svg>`;
+
+  const BADGE_HTML = `<a href="https://codedocai.app" target="_blank" rel="noopener noreferrer">
+  <img
+    src="https://img.shields.io/badge/CodeDocAI-${statusLabel}-${encodeURIComponent(statusColor.bg)}?style=flat-square"
+    alt="CodeDocAI ${statusLabel}"
+  />
+</a>`;
+
+  const currentBadge = badgeTab === 'markdown' ? BADGE_MARKDOWN
+    : badgeTab === 'svg' ? BADGE_SVG
+    : BADGE_HTML;
 
   // ── Diff Engine ─────────────────────────────────────────────────
   type DiffLineType = 'add' | 'del' | 'context';
@@ -3934,6 +3994,106 @@ def test_verify_token_weaknesses():
                         <Copy className="h-3.5 w-3.5" />
                         <span>Copy Markdown</span>
                       </button>
+                    </div>
+                  </div>
+
+                  {/* CI Badge Generator */}
+                  <div className="bg-[#0b0c11] border border-gray-900 rounded-2xl overflow-hidden shadow-xl">
+                    <div className="bg-gray-950 px-5 py-3.5 border-b border-gray-900 flex items-center justify-between">
+                      <div className="flex items-center gap-2.5">
+                        <ShieldCheck className="h-4 w-4 text-emerald-400" />
+                        <span className="text-sm font-semibold text-white font-['Space_Grotesk']">CI Badge Generator</span>
+                        <span className="text-[10px] font-mono text-gray-500">— Embed in your README or CI pipeline</span>
+                      </div>
+                      {/* Live badge preview */}
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] text-gray-500 font-mono">Preview:</span>
+                        <div className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-black/40 border border-gray-800">
+                          <span className="text-[9px] font-bold text-white font-mono tracking-wide" style={{ fontFamily: 'Verdana, sans-serif' }}>
+                            CodeDocAI
+                          </span>
+                          <span
+                            className="text-[9px] font-bold px-1.5 py-0.5 rounded text-white font-mono tracking-wide"
+                            style={{ backgroundColor: statusColor.bg, fontFamily: 'Verdana, sans-serif' }}
+                          >
+                            {statusLabel}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="p-5 space-y-4">
+                      {/* Threshold control */}
+                      <div className="flex items-center gap-4">
+                        <label className="text-xs text-gray-400 font-medium whitespace-nowrap">
+                          Pass threshold:
+                        </label>
+                        <input
+                          type="range"
+                          min="0"
+                          max="100"
+                          value={badgeThreshold}
+                          onChange={(e) => setBadgeThreshold(Number(e.target.value))}
+                          className="flex-1 accent-emerald-500"
+                        />
+                        <span className="text-xs font-mono text-emerald-400 w-10 text-right">{badgeThreshold}</span>
+                      </div>
+
+                      {/* Format tabs */}
+                      <div className="flex items-center gap-1 bg-gray-950 rounded-xl p-1 w-fit">
+                        {([
+                          { key: 'markdown', label: 'Markdown' },
+                          { key: 'svg',      label: 'SVG' },
+                          { key: 'html',     label: 'HTML' },
+                        ] as { key: typeof badgeTab; label: string }[]).map((tab) => (
+                          <button
+                            key={tab.key}
+                            onClick={() => setBadgeTab(tab.key)}
+                            className={`px-4 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
+                              badgeTab === tab.key
+                                ? 'bg-emerald-500 text-black font-semibold'
+                                : 'text-gray-400 hover:text-white'
+                            }`}
+                          >
+                            {tab.label}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Code block */}
+                      <div className="relative bg-[#030406] border border-gray-900 rounded-xl overflow-hidden">
+                        <div className="flex items-center justify-between px-4 py-2 border-b border-gray-900">
+                          <span className="text-[10px] font-mono text-gray-500 uppercase tracking-wider">
+                            {badgeTab === 'markdown' ? 'README.md' : badgeTab === 'svg' ? 'badge.svg' : 'index.html'}
+                          </span>
+                          <button
+                            onClick={() => { copyToClipboard(currentBadge); showToast('success', `${badgeTab.toUpperCase()} badge copied to clipboard!`); }}
+                            className="flex items-center gap-1.5 text-[10px] text-emerald-400 hover:text-emerald-300 font-mono transition-colors cursor-pointer px-2 py-1 rounded hover:bg-emerald-500/10"
+                          >
+                            <Copy className="h-3 w-3" />
+                            Copy
+                          </button>
+                        </div>
+                        <pre className="p-4 text-xs font-mono text-gray-400 overflow-x-auto max-h-40 leading-relaxed">
+                          {currentBadge}
+                        </pre>
+                      </div>
+
+                      {/* Usage tips */}
+                      <div className="flex flex-wrap gap-3 text-[10px] text-gray-600 font-mono">
+                        <span className="flex items-center gap-1">
+                          <span className="text-emerald-500">›</span>
+                          Markdown: paste directly into your README
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <span className="text-emerald-500">›</span>
+                          SVG: save as <span className="text-gray-400">.svg</span> or embed inline
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <span className="text-emerald-500">›</span>
+                          HTML: paste inside any <span className="text-gray-400">&lt;a&gt;</span> tag
+                        </span>
+                      </div>
                     </div>
                   </div>
 
