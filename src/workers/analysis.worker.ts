@@ -7,6 +7,16 @@ interface CodeFile {
   size: number;
 }
 
+interface CustomRule {
+  id: string;
+  severity: 'critical' | 'high' | 'medium' | 'low';
+  type: 'security' | 'performance' | 'maintainability' | 'testing';
+  message: string;
+  pattern: string;
+  description?: string;
+  suggestedFix?: string;
+}
+
 interface Issue {
   path: string;
   line: number;
@@ -36,7 +46,8 @@ interface MetricReport {
 }
 
 self.onmessage = function (e: MessageEvent) {
-  const { files } = e.data as { files: CodeFile[] };
+  const { files, customRules } = e.data as { files: CodeFile[]; customRules?: CustomRule[] };
+  const customRuleList: CustomRule[] = customRules && Array.isArray(customRules) ? customRules : [];
 
   if (!files || !Array.isArray(files)) {
     self.postMessage({ type: 'error', error: 'Invalid or missing files list.' });
@@ -326,6 +337,31 @@ self.onmessage = function (e: MessageEvent) {
           educationalInsight: 'Using eval() prevents the JavaScript engine from optimizing your code, as the runtime engine cannot pre-compile lexical scopes. More importantly, it bypasses Content Security Policies (CSP) and opens a direct vector for script injection, representing one of the highest security risks in web software.'
         });
         folderMetrics[folderKey].errors += 1;
+      }
+
+      // Run custom rules against this line
+      for (const rule of customRuleList) {
+        try {
+          const regex = new RegExp(rule.pattern);
+          if (regex.test(cleanLine)) {
+            localIssues.push({
+              path: normalizedPath,
+              line: lineNum,
+              type: rule.type,
+              severity: rule.severity,
+              message: rule.message,
+              code: cleanLine,
+              suggestedFix: rule.suggestedFix || 'Review and refactor according to your custom rule.',
+              explanation: rule.description || `Custom rule "${rule.id}" flagged this line.`,
+              businessImpact: 'Custom rule violation detected. Please review and address according to your project guidelines.',
+              solutions: [],
+              educationalInsight: 'This issue was flagged by a custom lint rule. Review your team\'s coding standards for the correct remediation approach.'
+            });
+            folderMetrics[folderKey].errors += 1;
+          }
+        } catch (err) {
+          // Skip invalid regex patterns silently
+        }
       }
     });
   }

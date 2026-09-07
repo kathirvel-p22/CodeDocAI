@@ -58,8 +58,18 @@ interface MetricReport {
   }>;
 }
 
+interface CustomRule {
+  id: string;
+  severity: 'critical' | 'high' | 'medium' | 'low';
+  type: 'security' | 'performance' | 'maintainability' | 'testing';
+  message: string;
+  pattern: string;
+  description?: string;
+  suggestedFix?: string;
+}
+
 // Perform fast regex-based local static analysis to find immediate pointers
-function runLocalStaticAnalysis(files: UploadedFile[]): MetricReport {
+function runLocalStaticAnalysis(files: UploadedFile[], customRules: CustomRule[] = []): MetricReport {
   let totalLines = 0;
   const languageCounts: Record<string, number> = {};
   const folderMetrics: Record<string, { files: number; lines: number; errors: number }> = {};
@@ -327,6 +337,29 @@ function runLocalStaticAnalysis(files: UploadedFile[]): MetricReport {
         });
         folderMetrics[folderKey].errors += 1;
       }
+
+      // Run custom rules
+      for (const rule of customRules) {
+        try {
+          const regex = new RegExp(rule.pattern);
+          if (regex.test(cleanLine)) {
+            localIssues.push({
+              path: normalizedPath,
+              line: lineNum,
+              type: rule.type,
+              severity: rule.severity,
+              message: rule.message,
+              code: cleanLine,
+              suggestedFix: rule.suggestedFix || 'Review and refactor per your custom rule.',
+              explanation: rule.description || `Custom rule "${rule.id}" matched.`,
+              businessImpact: 'Custom rule violation — review and address per your project guidelines.',
+              solutions: [],
+              educationalInsight: `This issue was flagged by custom rule "${rule.id}".`
+            });
+            folderMetrics[folderKey].errors += 1;
+          }
+        } catch { /* skip invalid regex */ }
+      }
     });
   });
 
@@ -348,14 +381,14 @@ async function startServer() {
   // API Analyze route
   app.post('/api/analyze', async (req, res) => {
     try {
-      const { files } = req.body as { files: UploadedFile[] };
+      const { files, customRules } = req.body as { files: UploadedFile[]; customRules?: CustomRule[] };
 
       if (!files || files.length === 0) {
         return res.status(400).json({ error: 'No files uploaded or parsed.' });
       }
 
       // 1. Calculate base local metrics and run initial local static analysis
-      const metrics = runLocalStaticAnalysis(files);
+      const metrics = runLocalStaticAnalysis(files, customRules || []);
 
       // 1.5 Build Knowledge Graph (Digital Twin)
       let knowledgeGraph: any = null;

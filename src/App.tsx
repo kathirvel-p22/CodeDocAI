@@ -194,6 +194,22 @@ interface AgentsReport {
   folderAnalysis: Record<string, FolderAnalysis>;
 }
 
+interface CustomRule {
+  id: string;
+  severity: 'critical' | 'high' | 'medium' | 'low';
+  type: 'security' | 'performance' | 'maintainability' | 'testing';
+  message: string;
+  pattern: string;
+  description?: string;
+  suggestedFix?: string;
+}
+
+interface CustomRulePack {
+  name: string;
+  description?: string;
+  rules: CustomRule[];
+}
+
 export default function App() {
   const [screen, setScreen] = useState<'upload' | 'scanning' | 'dashboard'>('upload');
   const [files, setFiles] = useState<CodeFile[]>([]);
@@ -228,6 +244,50 @@ export default function App() {
   const [pdfStep, setPdfStep] = useState<string>('');
   const [badgeTab, setBadgeTab] = useState<'markdown' | 'svg' | 'html'>('markdown');
   const [badgeThreshold, setBadgeThreshold] = useState<number>(70);
+
+  // Custom Rules State
+  const [customRulePack, setCustomRulePack] = useState<CustomRulePack | null>(() => {
+    if (typeof window === 'undefined') return null;
+    try { return JSON.parse(localStorage.getItem('codedocai-custom-rules') || 'null'); } catch { return null; }
+  });
+  const [isRuleUploaderOpen, setIsRuleUploaderOpen] = useState<boolean>(false);
+  const [ruleUploadError, setRuleUploadError] = useState<string>('');
+  const [isDraggingRules, setIsDraggingRules] = useState<boolean>(false);
+
+  const handleRuleFileUpload = (file: File) => {
+    setRuleUploadError('');
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const json = JSON.parse(e.target?.result as string);
+        if (!json.rules || !Array.isArray(json.rules) || json.rules.length === 0) {
+          setRuleUploadError('Invalid rule pack: must have a "rules" array with at least one rule.');
+          return;
+        }
+        for (const rule of json.rules) {
+          if (!rule.id || !rule.pattern || !rule.severity || !rule.type || !rule.message) {
+            setRuleUploadError(`Rule "${rule.id || 'unknown'}" is missing required fields: id, pattern, severity, type, message.`);
+            return;
+          }
+          new RegExp(rule.pattern); // validate regex
+        }
+        const pack: CustomRulePack = { name: json.name || file.name, description: json.description, rules: json.rules };
+        setCustomRulePack(pack);
+        try { localStorage.setItem('codedocai-custom-rules', JSON.stringify(pack)); } catch { /* no-op */ }
+        showToast('success', `Loaded ${json.rules.length} custom rule${json.rules.length !== 1 ? 's' : ''} from "${pack.name}".`);
+        setIsRuleUploaderOpen(false);
+      } catch (err) {
+        setRuleUploadError(`Failed to parse JSON: ${(err as Error).message}`);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const clearCustomRules = () => {
+    setCustomRulePack(null);
+    try { localStorage.removeItem('codedocai-custom-rules'); } catch { /* no-op */ }
+    showToast('info', 'Custom rules cleared.');
+  };
 
   // Toast Notification State
   interface ToastItem { id: number; type: 'success' | 'error' | 'info'; message: string; }
@@ -395,6 +455,7 @@ export default function App() {
     { id: 'theme-light',      label: 'Switch to Light Theme',           category: 'Settings', icon: Sun,          action: () => { setThemeMode('light');    setIsCommandPaletteOpen(false); } },
     { id: 'theme-dark',       label: 'Switch to Dark Theme',            category: 'Settings', icon: Moon,         action: () => { setThemeMode('dark');     setIsCommandPaletteOpen(false); } },
     { id: 'theme-system',     label: 'Switch to System Theme',          category: 'Settings', icon: Sliders,      action: () => { setThemeMode('system');   setIsCommandPaletteOpen(false); } },
+    { id: 'custom-rules',     label: `${customRulePack ? `Manage Custom Rules (${customRulePack.rules.length})` : 'Add Custom Rules'}`, category: 'Settings', icon: ShieldCheck, action: () => { setScreen('upload'); setIsRuleUploaderOpen(true); setIsCommandPaletteOpen(false); } },
   ];
 
   const filteredCommands = commandSearch.trim()
@@ -1722,7 +1783,7 @@ def test_verify_token_weaknesses():
           worker.terminate();
         };
         // Send payload to worker thread
-        worker.postMessage({ files: uploadedFiles });
+        worker.postMessage({ files: uploadedFiles, customRules: customRulePack?.rules || [] });
       });
 
       emitter.log(`[SUCCESS] Web Worker parsing complete. Analyzed ${localMetrics.totalFiles} files (${localMetrics.totalLines} lines of code).`);
@@ -1751,7 +1812,7 @@ def test_verify_token_weaknesses():
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ files: uploadedFiles }),
+        body: JSON.stringify({ files: uploadedFiles, customRules: customRulePack?.rules || [] }),
       });
 
       if (!res.ok) {
@@ -2634,6 +2695,111 @@ def test_verify_token_weaknesses():
                         </div>
                       </div>
                     ))}
+                  </div>
+
+                  {/* Custom Rules Pack Manager */}
+                  <div className="bg-[#0b0c11] border border-gray-900 rounded-2xl p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <ShieldCheck className="h-4 w-4 text-emerald-400" />
+                        <span className="text-xs font-semibold text-white">Custom Rules</span>
+                        {customRulePack && (
+                          <span className="text-[9px] font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-1.5 py-0.5 rounded-full">
+                            {customRulePack.rules.length} rule{customRulePack.rules.length !== 1 ? 's' : ''}
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => setIsRuleUploaderOpen((v) => !v)}
+                        className="text-[10px] text-emerald-400 hover:text-emerald-300 font-mono transition-colors cursor-pointer"
+                      >
+                        {customRulePack ? 'Manage' : 'Add Rules'}
+                      </button>
+                    </div>
+
+                    {isRuleUploaderOpen && (
+                      <div className="space-y-3">
+                        {customRulePack && (
+                          <div className="bg-gray-950 rounded-xl p-3 space-y-1.5 border border-gray-800">
+                            <p className="text-[10px] font-mono text-emerald-400 font-semibold">{customRulePack.name}</p>
+                            {customRulePack.rules.map((rule, i) => (
+                              <div key={i} className="flex items-center gap-2 text-[10px] text-gray-500 font-mono">
+                                <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                                  rule.severity === 'critical' ? 'bg-red-500' :
+                                  rule.severity === 'high' ? 'bg-orange-500' :
+                                  rule.severity === 'medium' ? 'bg-yellow-500' : 'bg-emerald-500'
+                                }`} />
+                                <span className="font-semibold text-gray-400">[{rule.id}]</span>
+                                <span>{rule.message.length > 40 ? rule.message.slice(0, 40) + '…' : rule.message}</span>
+                              </div>
+                            ))}
+                            <button
+                              onClick={clearCustomRules}
+                              className="mt-1 text-[10px] text-red-400 hover:text-red-300 font-mono transition-colors cursor-pointer"
+                            >
+                              Remove rules
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Drag & drop zone */}
+                        <div
+                          onDragOver={(e) => { e.preventDefault(); setIsDraggingRules(true); }}
+                          onDragLeave={() => setIsDraggingRules(false)}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            setIsDraggingRules(false);
+                            const file = e.dataTransfer.files[0];
+                            if (file) handleRuleFileUpload(file);
+                          }}
+                          onClick={() => {
+                            const input = document.createElement('input');
+                            input.type = 'file';
+                            input.accept = '.json';
+                            input.onchange = (ev) => {
+                              const f = (ev.target as HTMLInputElement).files?.[0];
+                              if (f) handleRuleFileUpload(f);
+                            };
+                            input.click();
+                          }}
+                          className={`border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-all ${
+                            isDraggingRules
+                              ? 'border-emerald-500 bg-emerald-500/5'
+                              : 'border-gray-800 hover:border-emerald-500/30 hover:bg-gray-950'
+                          }`}
+                        >
+                          <UploadCloud className="h-5 w-5 text-gray-500 mx-auto mb-1.5" />
+                          <p className="text-[11px] text-gray-400 font-medium">
+                            {isDraggingRules ? 'Drop JSON file here' : 'Drop a .json rule pack here or click to browse'}
+                          </p>
+                        </div>
+
+                        {ruleUploadError && (
+                          <div className="bg-red-950/20 border border-red-500/20 rounded-lg px-3 py-2">
+                            <p className="text-[10px] text-red-400 font-mono">{ruleUploadError}</p>
+                          </div>
+                        )}
+
+                        {/* Example format hint */}
+                        <details className="group">
+                          <summary className="text-[10px] text-gray-600 font-mono cursor-pointer hover:text-gray-400 transition-colors list-none">
+                            Show example rule pack format
+                          </summary>
+                          <pre className="mt-2 bg-[#030406] border border-gray-900 rounded-xl p-3 text-[10px] font-mono text-gray-500 overflow-x-auto leading-relaxed">{`{
+  "name": "My Security Rules",
+  "description": "Team security policies",
+  "rules": [{
+    "id": "MY-001",
+    "severity": "critical",
+    "type": "security",
+    "message": "Hardcoded secret detected",
+    "pattern": "password\\s*=\\s*['\\"]{1,3}[^'\\"]{8,}['\\"]{1,3}",
+    "suggestedFix": "Use process.env.SECRET instead"
+  }]
+}`}</pre>
+                        </details>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
