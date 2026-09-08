@@ -52,6 +52,7 @@ import {
   Shield,
   Wrench,
   TestTube,
+  Pin,
 } from 'lucide-react';
 import {
   BarChart,
@@ -524,6 +525,43 @@ export default function App() {
   const [typeFilter, setTypeFilter] = useState<'all' | 'security' | 'performance' | 'maintainability' | 'testing'>('all');
   const [issueSortBy, setIssueSortBy] = useState<'severity' | 'filePath'>('severity');
   const [modalFile, setModalFile] = useState<{ path: string; line: number } | null>(null);
+
+  // ── Issue Tracker State ──────────────────────────────────────────
+  type IssueStatus = 'open' | 'in-progress' | 'fixed';
+  interface IssueMeta {
+    pinned: boolean;
+    status: IssueStatus;
+    note: string;
+  }
+  const [issueMeta, setIssueMeta] = useState<Record<string, IssueMeta>>(() => {
+    if (typeof window === 'undefined') return {};
+    try { return JSON.parse(localStorage.getItem('codedocai-issue-meta') || '{}'); } catch { return {}; }
+  });
+  const [statusFilter, setStatusFilter] = useState<'all' | 'open' | 'in-progress' | 'fixed'>('all');
+
+  const issueKey = (issue: FolderIssue) => `${issue.file}@${issue.line}`;
+
+  const getMeta = (issue: FolderIssue): IssueMeta => {
+    const k = issueKey(issue);
+    return issueMeta[k] || { pinned: false, status: 'open', note: '' };
+  };
+
+  const setMeta = (issue: FolderIssue, patch: Partial<IssueMeta>) => {
+    const k = issueKey(issue);
+    const next = { ...getMeta(issue), ...patch };
+    setIssueMeta((prev) => {
+      const updated = { ...prev, [k]: next };
+      try { localStorage.setItem('codedocai-issue-meta', JSON.stringify(updated)); } catch { /* no-op */ }
+      return updated;
+    });
+  };
+
+  const togglePin = (issue: FolderIssue) => setMeta(issue, { pinned: !getMeta(issue).pinned });
+  const cycleStatus = (issue: FolderIssue) => {
+    const order: IssueStatus[] = ['open', 'in-progress', 'fixed'];
+    const cur = getMeta(issue).status;
+    setMeta(issue, { status: order[(order.indexOf(cur) + 1) % order.length] });
+  };
 
   const downloadAllIssuesAsZIP = async (folderPath: string, issues: FolderIssue[]) => {
     try {
@@ -3601,6 +3639,38 @@ def test_verify_token_weaknesses():
                                     })}
                                   </div>
 
+                                  {/* Status filter */}
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-[10px] text-gray-500 font-mono uppercase mr-1">Status:</span>
+                                    {([
+                                      { value: 'all',        label: 'All',         color: 'text-gray-400',      dot: 'bg-gray-500' },
+                                      { value: 'open',       label: 'Open',        color: 'text-blue-400',      dot: 'bg-blue-500' },
+                                      { value: 'in-progress',label: 'In Progress',  color: 'text-amber-400',     dot: 'bg-amber-500' },
+                                      { value: 'fixed',      label: 'Fixed',       color: 'text-emerald-400',   dot: 'bg-emerald-500' },
+                                    ] as { value: string; label: string; color: string; dot: string }[]).map((st) => {
+                                      const active = statusFilter === st.value;
+                                      const count = folderData.issues.filter((i) => st.value === 'all' ? true : getMeta(i).status === st.value).length;
+                                      if (count === 0 && st.value !== 'all') return null;
+                                      return (
+                                        <button
+                                          key={st.value}
+                                          onClick={() => { setStatusFilter(st.value as any); setExpandedIssueIndex(null); }}
+                                          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium transition-all cursor-pointer border ${
+                                            active
+                                              ? `${st.color} bg-gray-800 border-current/30`
+                                              : 'text-gray-500 bg-gray-950 border-gray-800 hover:text-gray-300 hover:border-gray-700'
+                                          }`}
+                                        >
+                                          <span className={`w-1.5 h-1.5 rounded-full ${st.dot}`} />
+                                          {st.label}
+                                          <span className={`ml-0.5 px-1 py-0.5 rounded text-[9px] font-mono ${
+                                            active ? 'bg-black/30' : 'bg-gray-800'
+                                          }`}>{count}</span>
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+
                                   {/* Results count */}
                                   <div className="flex items-center gap-1.5 text-[11px] text-gray-500 font-mono">
                                     <span className="text-gray-600">Showing</span>
@@ -3628,15 +3698,19 @@ def test_verify_token_weaknesses():
                               <div className="space-y-4">
                                 {(() => {
                                   const filteredIssues = folderData.issues.filter((issue) => {
-                                    // 1. Severity filter
-                                    if (severityFilter !== 'all' && issue.severity !== severityFilter) {
-                                      return false;
-                                    }
-                                    // 2. Type/category filter
-                                    if (typeFilter !== 'all' && issue.type !== typeFilter) {
-                                      return false;
-                                    }
-                                    // 3. Search query filter (matches file path, message, or senior commentary)
+// 1. Severity filter
+                                  if (severityFilter !== 'all' && issue.severity !== severityFilter) {
+                                    return false;
+                                  }
+                                  // 2. Type/category filter
+                                  if (typeFilter !== 'all' && issue.type !== typeFilter) {
+                                    return false;
+                                  }
+                                  // 3. Status filter
+                                  if (statusFilter !== 'all' && getMeta(issue).status !== statusFilter) {
+                                    return false;
+                                  }
+                                  // 4. Search query filter (matches file path, message, or senior commentary)
                                     if (folderSearchQuery.trim() !== '') {
                                       const query = folderSearchQuery.toLowerCase();
                                       const matchesFile = issue.file ? issue.file.toLowerCase().includes(query) : false;
@@ -3654,8 +3728,13 @@ def test_verify_token_weaknesses():
                                     low: 1
                                   };
 
-                                  const sortedIssues = [...filteredIssues].sort((a, b) => {
-                                    if (issueSortBy === 'severity') {
+const sortedIssues = [...filteredIssues].sort((a, b) => {
+                                      // Pinned issues first
+                                      const pinA = getMeta(a).pinned ? 1 : 0;
+                                      const pinB = getMeta(b).pinned ? 1 : 0;
+                                      if (pinB !== pinA) return pinB - pinA;
+
+                                      if (issueSortBy === 'severity') {
                                       const rankA = severityRank[a.severity] || 0;
                                       const rankB = severityRank[b.severity] || 0;
                                       if (rankB !== rankA) {
@@ -3749,12 +3828,48 @@ def test_verify_token_weaknesses():
                                               <span>Jump to File</span>
                                             </button>
                                           </div>
-                                          <h4 className="text-sm font-semibold text-gray-200 leading-snug">
-                                            {issue.message}
-                                          </h4>
-                                        </div>
+<h4 className="text-sm font-semibold text-gray-200 leading-snug">
+                                          {issue.message}
+                                        </h4>
+                                      </div>
 
-                                        <div className="pt-1.5 flex items-center space-x-2 shrink-0">
+                                      {/* Tracker controls: Pin + Status + Notes */}
+                                      {isExpanded && (
+                                        <div className="mt-3 pt-3 border-t border-gray-900/50 space-y-3">
+                                          <div className="flex flex-wrap items-center gap-2">
+                                            <button
+                                              onClick={(e) => { e.stopPropagation(); togglePin(issue); }}
+                                              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[10px] font-medium transition-all cursor-pointer ${
+                                                getMeta(issue).pinned
+                                                  ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                                                  : 'bg-gray-950 text-gray-500 border-gray-800 hover:text-emerald-400 hover:border-emerald-500/30'
+                                              }`}
+                                              title={getMeta(issue).pinned ? 'Unpin issue' : 'Pin issue to top'}
+                                            >
+                                              <Pin className={`h-3 w-3 ${getMeta(issue).pinned ? 'fill-current' : ''}`} />
+                                              <span>{getMeta(issue).pinned ? 'Pinned' : 'Pin'}</span>
+                                            </button>
+                                            <select
+                                              value={getMeta(issue).status}
+                                              onChange={(e) => { e.stopPropagation(); setMeta(issue, { status: e.target.value as any }); }}
+                                              className="bg-gray-950 border border-gray-800 text-xs text-gray-300 rounded-lg px-2.5 py-1.5 outline-none focus:border-emerald-500/40 cursor-pointer"
+                                            >
+                                              <option value="open">Open</option>
+                                              <option value="in-progress">In Progress</option>
+                                              <option value="fixed">Fixed</option>
+                                            </select>
+                                          </div>
+                                          <textarea
+                                            value={getMeta(issue).note}
+                                            onChange={(e) => { e.stopPropagation(); setMeta(issue, { note: e.target.value }); }}
+                                            placeholder="Add a personal note..."
+                                            className="w-full bg-gray-950 border border-gray-800 text-xs text-gray-300 rounded-lg px-2.5 py-1.5 outline-none focus:border-emerald-500/40 resize-none"
+                                            rows={2}
+                                          />
+                                        </div>
+                                      )}
+
+                                      <div className="pt-1.5 flex items-center space-x-2 shrink-0">
                                           <button
                                             title="Export Issue to JSON for Jira/Tickets"
                                             onClick={(e) => {
